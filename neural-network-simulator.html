@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Network Interactive Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4F6F9;
+  --panel:#FFFFFF;
+  --ink:#17263B;
+  --ink-soft:#5A6B84;
+  --line:#D8DFE9;
+  --pos:#1D5BD6;      /* positive weights / primary */
+  --neg:#D64545;      /* negative weights / error   */
+  --fire:#F2A33C;     /* neuron activation          */
+  --fire-deep:#E07B12;
+  --ok:#1F9D63;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --disp:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--paper);
+  background-image:
+    linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:26px 26px;
+  background-position:-1px -1px;
+  color:var(--ink);
+  font-family:var(--disp);
+  font-size:15px;
+  line-height:1.45;
+  padding:22px 18px 60px;
+}
+.wrap{max-width:1180px;margin:0 auto}
+header.masthead{margin-bottom:18px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
+h1{font-size:clamp(24px,3.4vw,36px);font-weight:700;letter-spacing:-.01em;margin:2px 0 6px}
+.arch-line{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+.arch-line b{color:var(--ink)}
+
+/* tabs */
+.tabs{display:flex;gap:8px;margin:18px 0 16px;flex-wrap:wrap}
+.tab-btn{
+  font-family:var(--mono);font-size:13px;padding:9px 16px;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink-soft);cursor:pointer;border-radius:6px;
+}
+.tab-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tab-btn:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+.tab{display:none}
+.tab.active{display:block}
+
+/* panels */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:0 1px 2px rgba(23,38,59,.05)}
+.panel h3{font-size:15px;margin-bottom:10px;letter-spacing:.01em}
+.panel h3 .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);font-weight:400;margin-left:6px}
+.grid-3{display:grid;grid-template-columns:300px 340px 1fr;gap:14px;align-items:start}
+.grid-2{display:grid;grid-template-columns:320px 1fr;gap:14px;align-items:start}
+@media(max-width:1020px){.grid-3{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}}
+@media(max-width:680px){.grid-3{grid-template-columns:1fr}}
+
+/* controls */
+.ctl{margin-bottom:11px}
+.ctl label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:3px}
+.ctl label output{color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--pos)}
+select{width:100%;font-family:var(--mono);font-size:13px;padding:7px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+button.act{
+  font-family:var(--disp);font-weight:500;font-size:13.5px;width:100%;margin-bottom:7px;
+  padding:9px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;
+  transition:background .12s;
+}
+button.act:hover{background:#EEF3FB}
+button.act.primary{background:var(--pos);border-color:var(--pos);color:#fff}
+button.act.primary:hover{background:#174AB2}
+button.act.warn{border-color:var(--fire-deep);color:var(--fire-deep)}
+button.act:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+.digit-row{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-bottom:10px}
+.digit-row button{
+  font-family:var(--mono);font-size:13px;padding:6px 0;border:1px solid var(--line);
+  background:#fff;border-radius:5px;cursor:pointer;color:var(--ink)
+}
+.digit-row button.sel{background:var(--fire);border-color:var(--fire-deep);color:#fff;font-weight:700}
+.status{
+  font-family:var(--mono);font-size:11.5px;padding:7px 9px;border-radius:6px;margin-bottom:12px;
+  background:#EDF7F1;border:1px solid #BFE3CF;color:var(--ok)
+}
+.status.busy{background:#FDF3E4;border-color:#F0D8AC;color:var(--fire-deep)}
+
+/* canvases */
+canvas{display:block}
+#drawCanvas{
+  border:1px solid var(--line);border-radius:8px;background:#0E1524;
+  width:100%;max-width:308px;touch-action:none;cursor:crosshair
+}
+#netCanvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#0E1524}
+.canvas-cap{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:6px}
+
+/* prediction bars */
+.pred{display:grid;grid-template-columns:18px 1fr 52px;gap:8px;align-items:center;margin-bottom:5px;font-family:var(--mono);font-size:12.5px}
+.pred .bar{height:13px;background:#EDF0F5;border-radius:4px;overflow:hidden}
+.pred .fill{height:100%;width:0%;background:var(--pos);border-radius:4px;transition:width .35s ease}
+.pred.top .fill{background:var(--fire)}
+.pred.top b{color:var(--fire-deep)}
+.selftest{font-family:var(--mono);font-size:12px;margin-top:10px;line-height:1.9}
+.selftest .ok{color:var(--ok)} .selftest .bad{color:var(--neg)}
+
+/* neuron playground */
+.fn-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.fn-tabs button{
+  font-family:var(--mono);font-size:12px;padding:6px 11px;border:1px solid var(--line);
+  border-radius:5px;background:#fff;cursor:pointer;color:var(--ink)
+}
+.fn-tabs button.sel{background:var(--ink);color:#fff;border-color:var(--ink)}
+.calc{
+  font-family:var(--mono);font-size:12.5px;background:#0E1524;color:#D7E3F4;border-radius:8px;
+  padding:12px;line-height:1.8;margin-top:10px;overflow-x:auto
+}
+.calc .lbl{color:#7E93B4}
+.calc .hi{color:var(--fire)}
+.props{font-size:13px;margin-top:10px;color:var(--ink-soft)}
+.props b{color:var(--ink)}
+.props ul{margin:4px 0 0 18px}
+#neuronDiagram,#fnPlot{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
+.minis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.mini{border:1px solid var(--line);border-radius:7px;padding:6px 6px 2px;cursor:pointer;background:#fff}
+.mini.sel{border-color:var(--fire-deep);box-shadow:0 0 0 2px rgba(242,163,60,.3)}
+.mini p{font-family:var(--mono);font-size:10.5px;text-align:center;color:var(--ink-soft);margin-top:2px}
+.mini canvas{width:100%}
+.footnote{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:14px}
+
+/* feature learning tab */
+.neuron-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+.neuron-grid.cols10{grid-template-columns:repeat(10,1fr)}
+.nthumb{border:2px solid var(--line);border-radius:5px;cursor:pointer;background:#0E1524;padding:2px;transition:transform .08s}
+.nthumb:hover{transform:scale(1.08)}
+.nthumb.sel{border-color:var(--fire-deep);box-shadow:0 0 0 2px rgba(242,163,60,.35)}
+.nthumb canvas{width:100%;image-rendering:pixelated;display:block;border-radius:2px}
+#bigPattern{width:100%;max-width:224px;image-rendering:pixelated;border:1px solid var(--line);border-radius:8px;background:#0E1524}
+.stat-rows{font-family:var(--mono);font-size:12.5px;line-height:2}
+.stat-rows b{color:var(--ink)}
+.resp-bar{height:14px;background:#EDF0F5;border-radius:4px;overflow:hidden;margin-top:4px}
+.resp-fill{height:100%;width:0%;background:var(--fire);border-radius:4px;transition:width .25s}
+.layer-info{font-size:13px;color:var(--ink-soft);margin:8px 0 12px;line-height:1.5}
+.layer-info b{color:var(--ink)}
+
+/* math foundations tab */
+.formulas{
+  font-family:var(--mono);font-size:12.5px;background:#0E1524;color:#D7E3F4;
+  border-radius:10px;padding:14px 16px;line-height:2.1;margin-bottom:14px;overflow-x:auto
+}
+.formulas .step{color:#7E93B4;margin-right:8px}
+.formulas .em{color:var(--fire)}
+#costLandscape,#costCurve,#chainCanvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
+.mstat{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-family:var(--mono);font-size:12px;margin:10px 0}
+.mstat div{background:#F4F6F9;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.mstat b{display:block;font-size:15px;color:var(--ink);margin-top:2px}
+.demo-note{font-family:var(--mono);font-size:11px;color:var(--fire-deep);margin-top:6px}
+@media (prefers-reduced-motion:reduce){ .pred .fill{transition:none} .resp-fill{transition:none} .nthumb:hover{transform:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="masthead">
+  <div class="eyebrow">Interactive Simulator · Deep Learning Education</div>
+  <h1>Neural Network: Draw → Process → Recognize</h1>
+  <div class="arch-line">Architecture: <b>784</b> (28×28 px) → <b>64</b> → <b>32</b> → <b>10</b> (digits 0–9)
+   &nbsp;·&nbsp; Parameters: 784×64+64 + 64×32+32 + 32×10+10 = <b>52,650</b></div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="tab-net" role="tab">01 · Network &amp; Recognition</button>
+  <button class="tab-btn" data-tab="tab-neuron" role="tab">02 · Neuron Activation &amp; Functions</button>
+  <button class="tab-btn" data-tab="tab-feat" role="tab">03 · Hierarchical Feature Learning</button>
+  <button class="tab-btn" data-tab="tab-math" role="tab">04 · Mathematical Foundations</button>
+</div>
+
+<!-- ============ TAB 1 : NETWORK & RECOGNITION ============ -->
+<section id="tab-net" class="tab active">
+  <div class="grid-3">
+
+    <div class="panel">
+      <h3>Controls</h3>
+      <div id="statusBox" class="status busy">Initializing — training model in your browser…</div>
+
+      <div class="ctl">
+        <label>Drawing intensity <output id="intVal">0.8</output></label>
+        <input type="range" id="intensity" min="0.2" max="1" step="0.05" value="0.8">
+      </div>
+      <div class="ctl">
+        <label>Brush size <output id="brushVal">2</output></label>
+        <input type="range" id="brush" min="1" max="4" step="1" value="2">
+      </div>
+
+      <div class="ctl">
+        <label>Select digit to draw</label>
+        <div class="digit-row" id="digitRow"></div>
+      </div>
+
+      <button class="act" id="btnClear">Clear canvas</button>
+      <button class="act" id="btnDrawDigit">Draw selected digit</button>
+      <button class="act primary" id="btnProcess">Process network</button>
+      <button class="act" id="btnForward">Animate forward pass</button>
+      <button class="act" id="btnBackprop">Animate backprop pass</button>
+      <button class="act" id="btnSelfTest">Self-test all digits</button>
+      <button class="act warn" id="btnRetrain">Retrain model</button>
+    </div>
+
+    <div class="panel">
+      <h3>Draw a digit <span class="tag">28×28 input grid</span></h3>
+      <canvas id="drawCanvas" width="280" height="280" aria-label="digit drawing area"></canvas>
+      <div class="canvas-cap">Draw with mouse or touch. Input is downsampled to 28×28 and centered, like MNIST.</div>
+
+      <h3 style="margin-top:16px">Network predictions</h3>
+      <div id="predBox"></div>
+      <div id="selfTestBox" class="selftest"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Network structure <span class="tag">live activations · blue = +w · red = −w</span></h3>
+      <canvas id="netCanvas" width="640" height="430"></canvas>
+      <div class="canvas-cap" id="netCap">Neuron brightness = activation strength. A subset of hidden neurons is shown; connections are sampled for clarity.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ TAB 2 : NEURON ACTIVATION & FUNCTIONS ============ -->
+<section id="tab-neuron" class="tab">
+  <div class="grid-2">
+
+    <div class="panel">
+      <h3>One neuron, by hand</h3>
+      <div class="arch-line" style="margin-bottom:12px">a = f(w₁x₁ + w₂x₂ + b)</div>
+
+      <div class="ctl"><label>Input x₁ <output id="x1v">0.70</output></label>
+        <input type="range" id="x1" min="-2" max="2" step="0.05" value="0.7"></div>
+      <div class="ctl"><label>Input x₂ <output id="x2v">0.40</output></label>
+        <input type="range" id="x2" min="-2" max="2" step="0.05" value="0.4"></div>
+      <div class="ctl"><label>Weight w₁ <output id="w1v">0.50</output></label>
+        <input type="range" id="w1" min="-2" max="2" step="0.05" value="0.5"></div>
+      <div class="ctl"><label>Weight w₂ <output id="w2v">-0.30</output></label>
+        <input type="range" id="w2" min="-2" max="2" step="0.05" value="-0.3"></div>
+      <div class="ctl"><label>Bias b <output id="bv">0.00</output></label>
+        <input type="range" id="b" min="-2" max="2" step="0.05" value="0"></div>
+
+      <div class="ctl">
+        <label>Activation function</label>
+        <div class="fn-tabs" id="fnTabs"></div>
+      </div>
+      <div class="ctl" id="alphaCtl" style="display:none">
+        <label>Leaky ReLU α <output id="alphav">0.01</output></label>
+        <input type="range" id="alpha" min="0.01" max="0.3" step="0.01" value="0.01">
+      </div>
+
+      <div class="calc" id="calcBox"></div>
+      <div class="props" id="propsBox"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Interactive neuron</h3>
+      <canvas id="neuronDiagram" width="820" height="270"></canvas>
+
+      <h3 style="margin-top:16px">Activation function comparison <span class="tag">active in amber · current point marked</span></h3>
+      <canvas id="fnPlot" width="820" height="330"></canvas>
+
+      <div class="minis" id="miniPlots"></div>
+      <p class="footnote">Note on softmax: it acts on a whole layer, not one neuron. For a two-way choice between z and 0, softmax reduces exactly to the sigmoid — that curve is what is plotted.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ TAB 3 : HIERARCHICAL FEATURE LEARNING ============ -->
+<section id="tab-feat" class="tab">
+  <div class="grid-2">
+
+    <div class="panel">
+      <h3>Focus on individual neurons</h3>
+      <div class="arch-line" style="margin-bottom:12px">Select a neuron to see what pattern it has learned to detect</div>
+
+      <div class="ctl">
+        <label>Layer to examine</label>
+        <select id="featLayer">
+          <option value="0">Layer 1 · Edge detectors (64 neurons)</option>
+          <option value="1">Layer 2 · Pattern combiners (32 neurons)</option>
+          <option value="2">Layer 3 · Digit class neurons (10 neurons)</option>
+        </select>
+      </div>
+      <div class="layer-info" id="layerInfo"></div>
+
+      <h3>Selected neuron stats</h3>
+      <div class="stat-rows" id="neuronStats">Click a neuron in the grid to inspect it.</div>
+
+      <h3 style="margin-top:14px">Response to current input</h3>
+      <div class="stat-rows" id="respLabel">Draw a digit on tab 01 and press “Process network”.</div>
+      <div class="resp-bar"><div class="resp-fill" id="respFill"></div></div>
+
+      <h3 style="margin-top:16px">Compare: your input vs. learned pattern</h3>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <canvas id="featInput" width="28" height="28" style="width:100%;max-width:224px;image-rendering:pixelated;border:1px solid var(--line);border-radius:8px;background:#0E1524"></canvas>
+          <div class="canvas-cap">Current input <span id="featInputNote">(none yet)</span></div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <canvas id="bigPattern" width="28" height="28"></canvas>
+          <div class="canvas-cap">Learned pattern — amber excites, blue inhibits. Deeper layers are linear projections back through earlier layers.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 id="gridTitle">Layer 1: edge detection <span class="tag">click any neuron</span></h3>
+      <div class="neuron-grid" id="neuronGrid"></div>
+      <div class="canvas-cap" style="margin-top:10px">Border glow shows how strongly each neuron fires for the
+      current input — process a drawing on tab 01, then come back here.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ TAB 4 : MATHEMATICAL FOUNDATIONS ============ -->
+<section id="tab-math" class="tab">
+  <div class="panel" style="margin-bottom:14px">
+    <h3>Complete backpropagation process <span class="tag">demo net 4 → 5 → 4 → 3 · trained on the real Iris dataset (150 flowers, 3 species)</span></h3>
+    <div class="formulas">
+      <span class="step">1 · cost</span> C = (1/n) Σₖ [ −Σᵢ yᵢ ln aᵢ⁽ᴸ⁾ ]ₖ <span class="step">(mean cross-entropy over the training set)</span><br>
+      <span class="step">2 · output error</span> δ⁽ᴸ⁾ = <span class="em">a⁽ᴸ⁾ − y</span> <span class="step">(elegant result of softmax + cross-entropy)</span><br>
+      <span class="step">3 · hidden error</span> δ⁽ˡ⁾ = ((W⁽ˡ⁺¹⁾)ᵀ δ⁽ˡ⁺¹⁾) ⊙ σ′(z⁽ˡ⁾) <span class="step">where σ′(z) = a(1−a)</span><br>
+      <span class="step">4 · weight update</span> W⁽ˡ⁾ ← W⁽ˡ⁾ − η · (1/n) Σₖ δ⁽ˡ⁾ (a⁽ˡ⁻¹⁾)ᵀ<br>
+      <span class="step">5 · bias update</span> b⁽ˡ⁾ ← b⁽ˡ⁾ − η · (1/n) Σₖ δ⁽ˡ⁾
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Current flower <span class="tag">shown live in the network</span></h3>
+      <div class="ctl"><label>Load a real sample</label>
+        <div class="fn-tabs">
+          <button id="loadSet">Setosa</button>
+          <button id="loadVers">Versicolor</button>
+          <button id="loadVirg">Virginica</button>
+          <button id="loadRand">Random</button>
+        </div></div>
+      <div class="ctl"><label>Sepal length (cm) <output id="mx1v">5.9</output></label>
+        <input type="range" id="mx1" min="4.3" max="7.9" step="0.1" value="5.9"></div>
+      <div class="ctl"><label>Sepal width (cm) <output id="mx2v">3.0</output></label>
+        <input type="range" id="mx2" min="2.0" max="4.4" step="0.1" value="3.0"></div>
+      <div class="ctl"><label>Petal length (cm) <output id="mx3v">4.2</output></label>
+        <input type="range" id="mx3" min="1.0" max="6.9" step="0.1" value="4.2"></div>
+      <div class="ctl"><label>Petal width (cm) <output id="mx4v">1.5</output></label>
+        <input type="range" id="mx4" min="0.1" max="2.5" step="0.1" value="1.5"></div>
+      <div class="ctl"><label>Target species (label y for this flower)</label>
+        <select id="mTarget">
+          <option value="0">Setosa</option>
+          <option value="1" selected>Versicolor</option>
+          <option value="2">Virginica</option>
+        </select></div>
+      <div class="ctl"><label>Learning rate η <output id="etaV">1.00</output></label>
+        <input type="range" id="eta" min="0.05" max="2" step="0.05" value="1"></div>
+
+      <button class="act" id="btnMathBP">Start backpropagation (this flower)</button>
+      <button class="act" id="btnMathGD">Gradient descent — 1 step, all 150 flowers</button>
+      <button class="act primary" id="btnMathCycle">Full training cycle (120 steps)</button>
+      <button class="act warn" id="btnMathReset">Reset demo (new random weights)</button>
+
+      <h3 style="margin-top:14px">Training progress</h3>
+      <div class="mstat">
+        <div>Cost C (dataset)<b id="msCost">—</b></div>
+        <div>Gradient norm ‖∇C‖<b id="msGrad">—</b></div>
+        <div>Iteration<b id="msIter">0</b></div>
+        <div>Dataset accuracy<b id="msDataAcc">—</b></div>
+        <div>This flower → prediction<b id="msPred">—</b></div>
+        <div>Target confidence<b id="msAcc">—</b></div>
+      </div>
+      <div class="canvas-cap" id="msState">forward only — no training yet</div>
+
+      <h3 style="margin-top:12px">Numerical example <span class="tag">one real weight, this flower</span></h3>
+      <div class="calc" id="mathCalc">Press “Start backpropagation” to trace one weight.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Interactive backpropagation network with live values <span class="tag">click any neuron</span></h3>
+      <canvas id="bpNet" width="560" height="340"></canvas>
+      <div class="canvas-cap">Inputs are the four measurements, min–max normalized to 0–1. Number in each neuron = activation a.
+      Red value below = error δ for the current flower after backprop. Amber ring = target species.
+      Edge color/width = weight sign and size. Click a neuron to pin its incoming weights.</div>
+      <div class="stat-rows" id="bpWeights" style="margin-top:6px;font-size:11.5px"></div>
+
+      <h3 style="margin-top:14px">Cost function landscape <span class="tag">mean Iris cost over two weights</span></h3>
+      <canvas id="costLandscape" width="560" height="300"></canvas>
+      <div class="canvas-cap">Mean cross-entropy over a 30-flower stratified sample, computed by actually sweeping the two
+      strongest weights into the target species neuron. Amber dots = gradient descent path.</div>
+
+      <h3 style="margin-top:14px">Optimization path <span class="tag">dataset cost vs iteration</span></h3>
+      <canvas id="costCurve" width="560" height="180"></canvas>
+    </div>
+  </div>
+</section>
+
+<p class="footnote">Model is trained live in your browser on procedurally generated digit glyphs (multiple fonts, shifts, scales, rotations), then normalized MNIST-style. No data leaves this page.</p>
+</div>
+
+<script>
+"use strict";
+/* ================================================================
+   0. small helpers
+================================================================ */
+const $ = id => document.getElementById(id);
+const fmt = (v,d=3) => (v>=0?" ":"") + v.toFixed(d);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* tabs */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    $(btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab==='tab-neuron') drawNeuronAll();
+    if(btn.dataset.tab==='tab-feat' && typeof buildFeatureGrid==='function') buildFeatureGrid();
+  });
+});
+
+/* ================================================================
+   1. neural network core  (784 -> 64 -> 32 -> 10)
+================================================================ */
+const SIZES=[784,64,32,10];
+function makeNet(){
+  const net={W:[],b:[]};
+  for(let l=1;l<SIZES.length;l++){
+    const nin=SIZES[l-1],nout=SIZES[l];
+    const W=new Float32Array(nin*nout), b=new Float32Array(nout);
+    const s=Math.sqrt(2/nin);
+    for(let i=0;i<W.length;i++) W[i]=(Math.random()*2-1)*s;
+    net.W.push(W); net.b.push(b);
+  }
+  return net;
+}
+function forward(net,x){
+  const as=[x], zs=[];
+  let a=x;
+  for(let l=0;l<net.W.length;l++){
+    const nin=SIZES[l],nout=SIZES[l+1],W=net.W[l],b=net.b[l];
+    const z=new Float32Array(nout);
+    for(let j=0;j<nout;j++){
+      let s=b[j]; const off=j*nin;
+      for(let i=0;i<nin;i++) s+=W[off+i]*a[i];
+      z[j]=s;
+    }
+    zs.push(z);
+    if(l<net.W.length-1){ // ReLU
+      const o=new Float32Array(nout);
+      for(let j=0;j<nout;j++) o[j]=z[j]>0?z[j]:0;
+      a=o;
+    }else{ // softmax
+      let mx=-1e9; for(let j=0;j<nout;j++) if(z[j]>mx)mx=z[j];
+      let sum=0; const o=new Float32Array(nout);
+      for(let j=0;j<nout;j++){o[j]=Math.exp(z[j]-mx); sum+=o[j];}
+      for(let j=0;j<nout;j++) o[j]/=sum;
+      a=o;
+    }
+    as.push(a);
+  }
+  return {as,zs};
+}
+/* backprop on one sample, accumulate grads */
+function backprop(net,x,y,gW,gb){
+  const {as,zs}=forward(net,x);
+  const L=net.W.length;
+  let delta=new Float32Array(SIZES[L]);
+  for(let j=0;j<SIZES[L];j++) delta[j]=as[L][j]-(j===y?1:0); // softmax+CE
+  for(let l=L-1;l>=0;l--){
+    const nin=SIZES[l],nout=SIZES[l+1],a=as[l];
+    const gWl=gW[l],gbl=gb[l];
+    for(let j=0;j<nout;j++){
+      const d=delta[j],off=j*nin;
+      gbl[j]+=d;
+      for(let i=0;i<nin;i++) gWl[off+i]+=d*a[i];
+    }
+    if(l>0){
+      const nd=new Float32Array(nin),W=net.W[l];
+      for(let i=0;i<nin;i++){
+        if(zs[l-1][i]<=0) continue;      // ReLU'
+        let s=0;
+        for(let j=0;j<nout;j++) s+=W[j*nin+i]*delta[j];
+        nd[i]=s;
+      }
+      delta=nd;
+    }
+  }
+  let loss=-Math.log(Math.max(as[L][y],1e-9));
+  return loss;
+}
+
+/* ================================================================
+   2. synthetic MNIST-style data
+================================================================ */
+const FONTS=['Arial','Georgia','Verdana','Courier New','Times New Roman','Trebuchet MS'];
+const tmp=document.createElement('canvas'); tmp.width=28; tmp.height=28;
+const tctx=tmp.getContext('2d',{willReadFrequently:true});
+const tmp2=document.createElement('canvas'); tmp2.width=28; tmp2.height=28;
+const tctx2=tmp2.getContext('2d',{willReadFrequently:true});
+
+function glyphSample(d){
+  tctx.fillStyle='#000'; tctx.fillRect(0,0,28,28);
+  tctx.save();
+  const f=FONTS[(Math.random()*FONTS.length)|0];
+  const size=17+Math.random()*8;
+  tctx.translate(14+(Math.random()*6-3), 14+(Math.random()*6-3));
+  tctx.rotate((Math.random()*0.3-0.15));
+  tctx.fillStyle='#fff';
+  tctx.font=`${Math.random()<0.5?'bold ':''}${size}px ${f}`;
+  tctx.textAlign='center'; tctx.textBaseline='middle';
+  tctx.fillText(String(d),0,1);
+  tctx.restore();
+  return normalize28(tmp);
+}
+/* crop bounding box, scale to 20px box, recentre -> Float32Array(784) */
+function normalize28(srcCanvas){
+  const img=srcCanvas.getContext('2d').getImageData(0,0,28,28).data;
+  let x0=28,y0=28,x1=-1,y1=-1;
+  for(let y=0;y<28;y++)for(let x=0;x<28;x++){
+    if(img[(y*28+x)*4]>25){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  }
+  const out=new Float32Array(784);
+  if(x1<0) return out;
+  const bw=x1-x0+1,bh=y1-y0+1,sc=20/Math.max(bw,bh);
+  const dw=bw*sc,dh=bh*sc;
+  tctx2.fillStyle='#000'; tctx2.fillRect(0,0,28,28);
+  tctx2.imageSmoothingEnabled=true;
+  tctx2.drawImage(srcCanvas,x0,y0,bw,bh,(28-dw)/2,(28-dh)/2,dw,dh);
+  const d2=tctx2.getImageData(0,0,28,28).data;
+  for(let i=0;i<784;i++) out[i]=d2[i*4]/255;
+  return out;
+}
+function buildDataset(perDigit){
+  const xs=[],ys=[];
+  for(let d=0;d<10;d++)for(let k=0;k<perDigit;k++){ xs.push(glyphSample(d)); ys.push(d); }
+  return {xs,ys};
+}
+
+/* ================================================================
+   3. training loop (async, keeps UI alive)
+================================================================ */
+let net=makeNet();
+let training=false;
+async function train(epochs=14,perDigit=36,lr=0.08){
+  training=true; setButtons(false);
+  status(`Generating ${perDigit*10} training glyphs…`,true);
+  await frame();
+  const {xs,ys}=buildDataset(perDigit);
+  const n=xs.length, idx=[...xs.keys()];
+  const gW=net.W.map(W=>new Float32Array(W.length));
+  const gb=net.b.map(b=>new Float32Array(b.length));
+  const BATCH=16;
+  for(let e=0;e<epochs;e++){
+    for(let i=n-1;i>0;i--){const j=(Math.random()*(i+1))|0;[idx[i],idx[j]]=[idx[j],idx[i]];}
+    let loss=0;
+    for(let s=0;s<n;s+=BATCH){
+      const end=Math.min(s+BATCH,n), m=end-s;
+      gW.forEach(g=>g.fill(0)); gb.forEach(g=>g.fill(0));
+      for(let k=s;k<end;k++) loss+=backprop(net,xs[idx[k]],ys[idx[k]],gW,gb);
+      for(let l=0;l<net.W.length;l++){
+        const W=net.W[l],G=gW[l],b=net.b[l],Gb=gb[l],f=lr/m;
+        for(let i=0;i<W.length;i++) W[i]-=f*G[i];
+        for(let i=0;i<b.length;i++) b[i]-=f*Gb[i];
+      }
+      if((s/BATCH)%6===0) await frame();
+    }
+    status(`Training… epoch ${e+1}/${epochs} · avg loss ${(loss/n).toFixed(3)}`,true);
+    await frame();
+  }
+  training=false; setButtons(true);
+  status('Ready — model trained in-browser (softmax + cross-entropy, SGD)');
+  process(false);
+  computeProjections();
+  if(document.querySelector('#tab-feat.active')) buildFeatureGrid();
+}
+const frame=()=>new Promise(r=>requestAnimationFrame(r));
+function status(msg,busy=false){ const s=$('statusBox'); s.textContent=msg; s.className='status'+(busy?' busy':''); }
+function setButtons(on){
+  ['btnClear','btnDrawDigit','btnProcess','btnForward','btnBackprop','btnSelfTest','btnRetrain']
+    .forEach(id=>{const b=$(id); if(b) b.disabled=!on;});
+}
+
+/* ================================================================
+   4. drawing canvas
+================================================================ */
+const dc=$('drawCanvas'), dctx=dc.getContext('2d',{willReadFrequently:true});
+function clearCanvas(){ dctx.fillStyle='#0E1524'; dctx.fillRect(0,0,280,280); gridHint(); }
+function gridHint(){
+  dctx.strokeStyle='rgba(255,255,255,0.045)'; dctx.lineWidth=1;
+  for(let i=1;i<28;i++){const p=i*10;
+    dctx.beginPath();dctx.moveTo(p,0);dctx.lineTo(p,280);dctx.stroke();
+    dctx.beginPath();dctx.moveTo(0,p);dctx.lineTo(280,p);dctx.stroke();}
+}
+clearCanvas();
+let drawing=false,last=null;
+function pos(e){
+  const r=dc.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:(t.clientX-r.left)*280/r.width, y:(t.clientY-r.top)*280/r.height};
+}
+function stroke(p){
+  const rad=(+$('brush').value)*7, inten=+$('intensity').value;
+  const g=dctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rad);
+  g.addColorStop(0,`rgba(255,255,255,${inten})`);
+  g.addColorStop(0.6,`rgba(255,255,255,${inten*0.55})`);
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  dctx.fillStyle=g; dctx.beginPath(); dctx.arc(p.x,p.y,rad,0,7); dctx.fill();
+}
+function line(a,b){
+  const d=Math.hypot(b.x-a.x,b.y-a.y),steps=Math.max(1,d/3|0);
+  for(let i=0;i<=steps;i++) stroke({x:a.x+(b.x-a.x)*i/steps,y:a.y+(b.y-a.y)*i/steps});
+}
+['mousedown','touchstart'].forEach(ev=>dc.addEventListener(ev,e=>{e.preventDefault();drawing=true;last=pos(e);stroke(last);},{passive:false}));
+['mousemove','touchmove'].forEach(ev=>dc.addEventListener(ev,e=>{if(!drawing)return;e.preventDefault();const p=pos(e);line(last,p);last=p;},{passive:false}));
+['mouseup','mouseleave','touchend'].forEach(ev=>dc.addEventListener(ev,()=>{drawing=false;}));
+
+function canvasTo784(){
+  tctx.clearRect(0,0,28,28);
+  tctx.fillStyle='#000'; tctx.fillRect(0,0,28,28);
+  tctx.imageSmoothingEnabled=true;
+  tctx.drawImage(dc,0,0,28,28);
+  return normalize28(tmp);
+}
+
+/* digit selector */
+let selDigit=3;
+for(let d=0;d<10;d++){
+  const b=document.createElement('button'); b.textContent=d;
+  if(d===selDigit) b.classList.add('sel');
+  b.addEventListener('click',()=>{selDigit=d;
+    document.querySelectorAll('#digitRow button').forEach((x,i)=>x.classList.toggle('sel',i===d));});
+  $('digitRow').appendChild(b);
+}
+$('intensity').addEventListener('input',e=>$('intVal').textContent=e.target.value);
+$('brush').addEventListener('input',e=>$('brushVal').textContent=e.target.value);
+$('btnClear').addEventListener('click',()=>{clearCanvas(); drawNet(null); renderPred(null); $('selfTestBox').innerHTML='';});
+$('btnDrawDigit').addEventListener('click',()=>{
+  clearCanvas();
+  const v=glyphSample(selDigit); // normalized 28x28
+  const id=tctx2.createImageData(28,28);
+  for(let i=0;i<784;i++){const c=v[i]*255|0; id.data[i*4]=c;id.data[i*4+1]=c;id.data[i*4+2]=c;id.data[i*4+3]=255;}
+  tctx2.putImageData(id,0,0);
+  dctx.imageSmoothingEnabled=false;
+  dctx.drawImage(tmp2,0,0,280,280); gridHint();
+});
+
+/* ================================================================
+   5. predictions + network visualization
+================================================================ */
+const predBox=$('predBox');
+for(let d=0;d<10;d++){
+  const row=document.createElement('div'); row.className='pred'; row.id='pred'+d;
+  row.innerHTML=`<b>${d}</b><div class="bar"><div class="fill"></div></div><span>0.0%</span>`;
+  predBox.appendChild(row);
+}
+function renderPred(probs){
+  let top=-1;
+  if(probs){let m=-1;for(let d=0;d<10;d++)if(probs[d]>m){m=probs[d];top=d;}}
+  for(let d=0;d<10;d++){
+    const row=$('pred'+d), p=probs?probs[d]*100:0;
+    row.classList.toggle('top',d===top);
+    row.querySelector('.fill').style.width=p+'%';
+    row.querySelector('span').textContent=p.toFixed(1)+'%';
+  }
+  return top;
+}
+
+let lastAct=null; // {as, x}
+function process(announce=true){
+  const x=canvasTo784();
+  const {as}=forward(net,x);
+  lastAct={as,x};
+  const top=renderPred(as[3]);
+  drawNet(lastAct);
+  if(typeof featResponseRefresh==='function' && PROJ) featResponseRefresh();
+  if(announce) status(`Prediction: ${top}  (confidence ${(as[3][top]*100).toFixed(1)}%)`);
+  return lastAct;
+}
+$('btnProcess').addEventListener('click',()=>process());
+
+/* --- network canvas --- */
+const nc=$('netCanvas'), nctx=nc.getContext('2d');
+const SHOW=[0,16,12,10];               // neurons drawn per layer (0 => image)
+const COLX=[70,250,410,560];
+function layerYs(count,h){
+  const ys=[]; const pad=34, span=h-2*pad;
+  for(let i=0;i<count;i++) ys.push(pad+span*(count===1?0.5:i/(count-1)));
+  return ys;
+}
+function sampleIdx(total,shown){
+  const out=[]; for(let i=0;i<shown;i++) out.push(Math.round(i*(total-1)/(shown-1)));
+  return out;
+}
+function drawNet(act, phase=99, mode='fwd'){
+  const W=nc.width,H=nc.height;
+  nctx.fillStyle='#0E1524'; nctx.fillRect(0,0,W,H);
+  const ys=[null,layerYs(SHOW[1],H),layerYs(SHOW[2],H),layerYs(SHOW[3],H)];
+  const idx=[null,sampleIdx(64,SHOW[1]),sampleIdx(32,SHOW[2]),[...Array(10).keys()]];
+
+  /* input image */
+  const IX=COLX[0]-42,IY=H/2-42,CS=3;
+  nctx.strokeStyle='#2A3A57'; nctx.strokeRect(IX-1,IY-1,28*CS+2,28*CS+2);
+  if(act){
+    for(let y=0;y<28;y++)for(let x=0;x<28;x++){
+      const v=act.x[y*28+x]; if(v<0.02)continue;
+      nctx.fillStyle=`rgba(242,163,60,${0.15+v*0.85})`;
+      nctx.fillRect(IX+x*CS,IY+y*CS,CS,CS);
+    }
+  }else{
+    nctx.fillStyle='#22314C'; nctx.font='11px IBM Plex Mono';
+    nctx.fillText('no input',IX+14,H/2);
+  }
+
+  /* connections */
+  for(let l=1;l<=3;l++){
+    const prevYs = l===1 ? [H/2] : ys[l-1];
+    const prevX  = l===1 ? IX+28*CS : COLX[l-1];
+    const active = act && phase>=l;
+    for(let j=0;j<SHOW[l];j++){
+      for(let i=0;i<(l===1?1:SHOW[l-1]);i++){
+        const w = l===1 ? 0.4 : net.W[l-1][ idx[l][j]*SIZES[l-1] + idx[l-1][i] ];
+        const mag=clamp(Math.abs(w)*(l===1?1:2.2),0,1);
+        let col;
+        if(mode==='bwd' && act && phase<=l) col=`rgba(214,69,69,${0.25+mag*0.5})`;
+        else if(l===1) col='rgba(90,107,132,0.25)';
+        else col = w>=0?`rgba(69,124,214,${0.10+mag*0.45})`:`rgba(214,69,69,${0.10+mag*0.45})`;
+        nctx.strokeStyle=col; nctx.lineWidth=0.6+mag*1.2;
+        nctx.beginPath(); nctx.moveTo(prevX,prevYs[i]); nctx.lineTo(COLX[l]-8,ys[l][j]); nctx.stroke();
+        if(l===1) break; // input drawn as single fan per neuron
+      }
+    }
+  }
+
+  /* neurons */
+  for(let l=1;l<=3;l++){
+    for(let j=0;j<SHOW[l];j++){
+      const ni=idx[l][j];
+      let a=0; if(act) a = l<3 ? clamp(act.as[l][ni]/2.5,0,1) : act.as[3][ni];
+      const lit = act && phase>=l;
+      const r = l===3?9:7;
+      nctx.beginPath(); nctx.arc(COLX[l],ys[l][j],r,0,7);
+      if(mode==='bwd' && act && phase<=l && phase<99){
+        nctx.fillStyle=`rgba(214,69,69,${0.35+a*0.6})`;
+      }else{
+        nctx.fillStyle = lit? `rgba(242,163,60,${0.12+a*0.88})` : '#1A2740';
+      }
+      nctx.fill();
+      nctx.strokeStyle = lit&&a>0.55 ? '#F2A33C' : '#33456A';
+      nctx.lineWidth=1; nctx.stroke();
+      if(l===3){
+        nctx.fillStyle= a>0.5 ? '#F2A33C':'#8FA3C2';
+        nctx.font='11px IBM Plex Mono'; nctx.textAlign='left';
+        nctx.fillText(String(ni), COLX[l]+15, ys[l][j]+4);
+        if(act){
+          nctx.fillStyle='#5A6B84'; nctx.font='9px IBM Plex Mono';
+          nctx.fillText((a*100).toFixed(0)+'%', COLX[l]+30, ys[l][j]+4);
+        }
+      }
+    }
+  }
+  /* labels */
+  nctx.fillStyle='#7E93B4'; nctx.font='10.5px IBM Plex Mono'; nctx.textAlign='center';
+  nctx.fillText('input 784',COLX[0],H-8);
+  nctx.fillText('hidden 64 · ReLU',COLX[1],H-8);
+  nctx.fillText('hidden 32 · ReLU',COLX[2],H-8);
+  nctx.fillText('output 10 · softmax',COLX[3]-14,H-8);
+  nctx.textAlign='left';
+}
+drawNet(null);
+
+/* animations */
+async function animatePass(mode){
+  const act=process(false);
+  const order = mode==='fwd' ? [0,1,2,3] : [3,2,1,0];
+  for(const ph of order){
+    if(mode==='fwd') drawNet(act,ph,'fwd');
+    else drawNet(act,ph,'bwd');
+    $('netCap').textContent = mode==='fwd'
+      ? `Forward pass — computing layer ${ph} activations: a⁽ˡ⁾ = f(W a⁽ˡ⁻¹⁾ + b)`
+      : `Backprop — error δ flowing back through layer ${ph}: δ⁽ˡ⁾ = (Wᵀδ⁽ˡ⁺¹⁾) ⊙ f′(z⁽ˡ⁾)`;
+    await new Promise(r=>setTimeout(r,520));
+  }
+  drawNet(act);
+  $('netCap').textContent='Neuron brightness = activation strength. A subset of hidden neurons is shown; connections are sampled for clarity.';
+}
+$('btnForward').addEventListener('click',()=>animatePass('fwd'));
+$('btnBackprop').addEventListener('click',()=>animatePass('bwd'));
+
+/* self-test */
+$('btnSelfTest').addEventListener('click',async ()=>{
+  setButtons(false); status('Self-testing on fresh glyphs…',true);
+  let correct=0; const parts=[];
+  for(let d=0;d<10;d++){
+    let hits=0,conf=0;
+    for(let k=0;k<5;k++){
+      const x=glyphSample(d), {as}=forward(net,x);
+      let top=0; for(let j=1;j<10;j++) if(as[3][j]>as[3][top])top=j;
+      if(top===d){hits++; conf+=as[3][top];}
+      await 0;
+    }
+    correct+=hits;
+    const ok=hits>=4;
+    parts.push(`<span class="${ok?'ok':'bad'}">${d}: ${hits}/5 ${ok?'✓':'✗'}</span>`);
+    await frame();
+  }
+  $('selfTestBox').innerHTML = parts.join(' &nbsp; ') +
+    `<br>Overall: <b>${correct}/50 (${(correct*2).toFixed(0)}%)</b> on unseen glyph variations`;
+  setButtons(true); status('Self-test complete');
+});
+$('btnRetrain').addEventListener('click',()=>{ net=makeNet(); train(); });
+
+/* ================================================================
+   6. TAB 2 — neuron playground
+================================================================ */
+const FNS={
+  relu:   {name:'ReLU',       f:z=>Math.max(0,z),                     df:z=>z>0?1:0,
+    props:'<b>ReLU:</b> f(z) = max(0, z)<ul><li>Very fast to compute</li><li>Helps against vanishing gradients</li><li>Can suffer the “dying ReLU” problem (stuck at 0)</li></ul>'},
+  leaky:  {name:'Leaky ReLU', f:(z,a)=>z>0?z:a*z,                     df:(z,a)=>z>0?1:a,
+    props:'<b>Leaky ReLU:</b> f(z) = z if z&gt;0, else αz<ul><li>Keeps a small gradient when z &lt; 0</li><li>Fixes the dying-ReLU problem</li><li>α is a small constant, typically 0.01</li></ul>'},
+  sigmoid:{name:'Sigmoid',    f:z=>1/(1+Math.exp(-z)),                df:z=>{const s=1/(1+Math.exp(-z));return s*(1-s);},
+    props:'<b>Sigmoid:</b> f(z) = 1 / (1 + e<sup>−z</sup>)<ul><li>Squashes output to (0, 1) — reads as a probability</li><li>Saturates for large |z| → vanishing gradients</li><li>Not zero-centred</li></ul>'},
+  tanh:   {name:'Tanh',       f:z=>Math.tanh(z),                      df:z=>1-Math.tanh(z)**2,
+    props:'<b>Tanh:</b> f(z) = tanh(z)<ul><li>Squashes output to (−1, 1), zero-centred</li><li>Stronger gradients than sigmoid near 0</li><li>Still saturates for large |z|</li></ul>'},
+  softmax:{name:'Softmax',    f:z=>1/(1+Math.exp(-z)),                df:z=>{const s=1/(1+Math.exp(-z));return s*(1-s);},
+    props:'<b>Softmax:</b> f(z)ᵢ = e<sup>zᵢ</sup> / Σⱼ e<sup>zⱼ</sup><ul><li>Turns a whole layer into a probability distribution</li><li>Used at the output for classification</li><li>For two options {z, 0} it equals the sigmoid — plotted here</li></ul>'},
+};
+let curFn='relu';
+const fnTabs=$('fnTabs');
+Object.entries(FNS).forEach(([k,v])=>{
+  const b=document.createElement('button'); b.textContent=v.name;
+  if(k===curFn)b.classList.add('sel');
+  b.addEventListener('click',()=>{curFn=k;
+    fnTabs.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.textContent===v.name));
+    $('alphaCtl').style.display = k==='leaky'?'':'none';
+    drawNeuronAll();});
+  fnTabs.appendChild(b);
+});
+['x1','x2','w1','w2','b','alpha'].forEach(id=>{
+  $(id).addEventListener('input',()=>{
+    $(id+'v').textContent=(+$(id).value).toFixed(2);
+    drawNeuronAll();
+  });
+});
+function vals(){
+  return {x1:+$('x1').value,x2:+$('x2').value,w1:+$('w1').value,w2:+$('w2').value,
+          b:+$('b').value,alpha:+$('alpha').value};
+}
+function drawNeuronAll(){
+  const v=vals(), z=v.w1*v.x1+v.w2*v.x2+v.b;
+  const fn=FNS[curFn], a=fn.f(z,v.alpha), da=fn.df(z,v.alpha);
+  $('calcBox').innerHTML=
+    `<span class="lbl">symbolic</span>  z = w₁·x₁ + w₂·x₂ + b     a = f(z)<br>`+
+    `<span class="lbl">numeric </span>  z = ${v.w1.toFixed(2)}×${v.x1.toFixed(2)} + (${v.w2.toFixed(2)})×${v.x2.toFixed(2)} + ${v.b.toFixed(2)} = <span class="hi">${z.toFixed(3)}</span><br>`+
+    `<span class="lbl">output  </span>  a = ${fn.name}(${z.toFixed(3)}) = <span class="hi">${a.toFixed(3)}</span><br>`+
+    `<span class="lbl">gradient</span>  f′(z) = ${da.toFixed(3)}   <span class="lbl">(how strongly learning flows through)</span>`;
+  $('propsBox').innerHTML=fn.props;
+  drawDiagram(v,z,a);
+  drawPlot(z,a,v.alpha);
+  drawMinis(z,v.alpha);
+}
+
+/* neuron diagram */
+const ndg=$('neuronDiagram'),nd=ndg.getContext('2d');
+function node(x,y,r,label,val,hot){
+  nd.beginPath(); nd.arc(x,y,r,0,7);
+  nd.fillStyle=hot?'rgba(242,163,60,0.16)':'#F4F6F9'; nd.fill();
+  nd.strokeStyle=hot?'#E07B12':'#8FA3C2'; nd.lineWidth=2; nd.stroke();
+  nd.fillStyle='#17263B'; nd.textAlign='center';
+  nd.font='600 14px Space Grotesk'; nd.fillText(label,x,y-4);
+  nd.font='12px IBM Plex Mono'; nd.fillStyle='#5A6B84';
+  if(val!==null) nd.fillText(val,x,y+14);
+}
+function edge(x1,y1,x2,y2,w,label){
+  const mag=clamp(Math.abs(w)/2,0.08,1);
+  nd.strokeStyle = w>=0?`rgba(29,91,214,${0.35+mag*0.65})`:`rgba(214,69,69,${0.35+mag*0.65})`;
+  nd.lineWidth=1+mag*5;
+  nd.beginPath(); nd.moveTo(x1,y1); nd.lineTo(x2,y2); nd.stroke();
+  if(label){
+    const mx=(x1+x2)/2, my=(y1+y2)/2-10;
+    nd.fillStyle=w>=0?'#1D5BD6':'#D64545';
+    nd.font='12px IBM Plex Mono'; nd.textAlign='center'; nd.fillText(label,mx,my);
+  }
+}
+function drawDiagram(v,z,a){
+  const W=ndg.width,H=ndg.height;
+  nd.clearRect(0,0,W,H);
+  const y1=H*0.30,y2=H*0.70,ym=H*0.5;
+  edge(150,y1,395,ym,v.w1,`w₁ = ${v.w1.toFixed(2)}`);
+  edge(150,y2,395,ym,v.w2,`w₂ = ${v.w2.toFixed(2)}`);
+  edge(430,ym,560,ym,1,null);
+  edge(596,ym,730,ym,1,null);
+  node(115,y1,34,'x₁',v.x1.toFixed(2),false);
+  node(115,y2,34,'x₂',v.x2.toFixed(2),false);
+  node(430,ym,38,'Σ + b','z='+z.toFixed(2),false);
+  node(596,ym,38,'f',FNS[curFn].name,true);
+  node(768,ym,40,'a',a.toFixed(3),true);
+  nd.fillStyle='#5A6B84'; nd.font='11px IBM Plex Mono'; nd.textAlign='center';
+  nd.fillText('inputs',115,H-12); nd.fillText(`weighted sum (b=${v.b.toFixed(2)})`,430,H-12);
+  nd.fillText('activation',596,H-12); nd.fillText('output',768,H-12);
+}
+
+/* main comparison plot */
+const fp=$('fnPlot'),fpx=fp.getContext('2d');
+const XR=4, YMIN=-1.6, YMAX=2.2;
+function px(z,W){return (z+XR)/(2*XR)*W;}
+function py(a,H){return H-(a-YMIN)/(YMAX-YMIN)*H;}
+function drawPlot(z,a,alpha){
+  const W=fp.width,H=fp.height;
+  fpx.clearRect(0,0,W,H);
+  /* grid */
+  fpx.strokeStyle='#EDF0F5'; fpx.lineWidth=1;
+  for(let gz=-4;gz<=4;gz++){fpx.beginPath();fpx.moveTo(px(gz,W),0);fpx.lineTo(px(gz,W),H);fpx.stroke();}
+  for(let ga=-1;ga<=2;ga+=0.5){fpx.beginPath();fpx.moveTo(0,py(ga,H));fpx.lineTo(W,py(ga,H));fpx.stroke();}
+  fpx.strokeStyle='#B9C4D6';
+  fpx.beginPath();fpx.moveTo(px(0,W),0);fpx.lineTo(px(0,W),H);fpx.stroke();
+  fpx.beginPath();fpx.moveTo(0,py(0,H));fpx.lineTo(W,py(0,H));fpx.stroke();
+  /* curves */
+  Object.entries(FNS).forEach(([k,fn])=>{
+    if(k==='softmax'&&curFn!=='softmax')return; // avoid duplicate of sigmoid when inactive
+    const active=k===curFn;
+    fpx.strokeStyle=active?'#E07B12':'rgba(90,107,132,0.35)';
+    fpx.lineWidth=active?3:1.4;
+    fpx.beginPath();
+    for(let i=0;i<=240;i++){
+      const zz=-XR+2*XR*i/240, aa=clamp(fn.f(zz,alpha),YMIN,YMAX);
+      i===0?fpx.moveTo(px(zz,W),py(aa,H)):fpx.lineTo(px(zz,W),py(aa,H));
+    }
+    fpx.stroke();
+  });
+  /* current point */
+  const cx=px(clamp(z,-XR,XR),W), cy=py(clamp(a,YMIN,YMAX),H);
+  fpx.setLineDash([4,4]); fpx.strokeStyle='#F2A33C';
+  fpx.beginPath();fpx.moveTo(cx,py(0,H));fpx.lineTo(cx,cy);fpx.lineTo(px(0,W),cy);fpx.stroke();
+  fpx.setLineDash([]);
+  fpx.beginPath();fpx.arc(cx,cy,6,0,7);fpx.fillStyle='#F2A33C';fpx.fill();
+  fpx.strokeStyle='#fff';fpx.lineWidth=2;fpx.stroke();
+  fpx.fillStyle='#17263B';fpx.font='12px IBM Plex Mono';fpx.textAlign='left';
+  fpx.fillText(`(z=${z.toFixed(2)}, a=${a.toFixed(2)})`,clamp(cx+10,10,W-140),clamp(cy-10,16,H-8));
+  fpx.fillStyle='#5A6B84';fpx.font='11px IBM Plex Mono';
+  fpx.fillText('z →',W-34,py(0,H)-6);
+}
+
+/* mini plots */
+const miniBox=$('miniPlots'), miniCtxs={};
+Object.entries(FNS).forEach(([k,fn])=>{
+  const d=document.createElement('div'); d.className='mini'+(k===curFn?' sel':''); d.dataset.k=k;
+  const c=document.createElement('canvas'); c.width=140;c.height=84;
+  const p=document.createElement('p'); p.textContent=fn.name;
+  d.appendChild(c);d.appendChild(p);miniBox.appendChild(d);
+  miniCtxs[k]=c.getContext('2d');
+  d.addEventListener('click',()=>{
+    curFn=k;
+    $('alphaCtl').style.display = k==='leaky'?'':'none';
+    fnTabs.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.textContent===fn.name));
+    drawNeuronAll();
+  });
+});
+function drawMinis(z,alpha){
+  document.querySelectorAll('.mini').forEach(m=>m.classList.toggle('sel',m.dataset.k===curFn));
+  Object.entries(FNS).forEach(([k,fn])=>{
+    const c=miniCtxs[k],W=140,H=84;
+    c.clearRect(0,0,W,H);
+    c.strokeStyle='#EDF0F5';
+    c.beginPath();c.moveTo(W/2,0);c.lineTo(W/2,H);c.stroke();
+    c.beginPath();c.moveTo(0,H*0.68);c.lineTo(W,H*0.68);c.stroke();
+    c.strokeStyle = k===curFn?'#E07B12':'#5A6B84'; c.lineWidth=k===curFn?2.4:1.5;
+    c.beginPath();
+    for(let i=0;i<=80;i++){
+      const zz=-4+8*i/80, aa=clamp(fn.f(zz,alpha),-1.4,2);
+      const X=i/80*W, Y=H*0.68 - aa*(H*0.28);
+      i===0?c.moveTo(X,Y):c.lineTo(X,Y);
+    }
+    c.stroke();
+    const aa=clamp(fn.f(clamp(z,-4,4),alpha),-1.4,2);
+    c.beginPath();c.arc((clamp(z,-4,4)+4)/8*W, H*0.68-aa*(H*0.28),3.5,0,7);
+    c.fillStyle='#F2A33C';c.fill();
+  });
+}
+
+/* ================================================================
+   7. TAB 3 — hierarchical feature learning
+================================================================ */
+const LAYER_META=[
+  {n:64, name:'Layer 1: edge detection',
+   info:'<b>Layer 1</b> sees raw pixels. Each of its 64 neurons learns a weight for every one of the 784 pixels — the pattern shown is literally its weight matrix, and typically looks like small <b>strokes, edges and blobs</b>.'},
+  {n:32, name:'Layer 2: pattern combining',
+   info:'<b>Layer 2</b> never sees pixels — only the 64 layer-1 activations. Its 32 neurons combine edge detectors into <b>curves, corners, loops and line junctions</b>. Shown here projected back to pixel space.'},
+  {n:10, name:'Layer 3: digit class neurons',
+   info:'<b>The output layer</b> combines layer-2 patterns into full <b>digit templates</b> — one neuron per class. You can often recognize a ghost of each digit in its projection.'},
+];
+let PROJ=null, featLayer=0, featSel=-1;
+const thumbCtxs=[];
+function computeProjections(){
+  const P1=[],P2=[],P3=[];
+  for(let j=0;j<64;j++){ P1.push(net.W[0].subarray(j*784,(j+1)*784)); }
+  for(let j=0;j<32;j++){
+    const p=new Float32Array(784);
+    for(let i=0;i<64;i++){
+      const w=net.W[1][j*64+i]; if(Math.abs(w)<1e-4) continue;
+      const src=P1[i];
+      for(let k=0;k<784;k++) p[k]+=w*src[k];
+    }
+    P2.push(p);
+  }
+  for(let j=0;j<10;j++){
+    const p=new Float32Array(784);
+    for(let i=0;i<32;i++){
+      const w=net.W[2][j*32+i]; if(Math.abs(w)<1e-4) continue;
+      const src=P2[i];
+      for(let k=0;k<784;k++) p[k]+=w*src[k];
+    }
+    P3.push(p);
+  }
+  PROJ=[P1,P2,P3];
+}
+function paintPattern(ctx,vec){
+  let mx=1e-6; for(let i=0;i<784;i++){const a=Math.abs(vec[i]); if(a>mx)mx=a;}
+  const id=ctx.createImageData(28,28);
+  for(let i=0;i<784;i++){
+    const v=vec[i]/mx, o=i*4;
+    if(v>=0){ // amber
+      id.data[o]=14+228*v; id.data[o+1]=21+142*v; id.data[o+2]=36+24*v;
+    }else{    // blue
+      const u=-v;
+      id.data[o]=14+15*u; id.data[o+1]=21+70*u; id.data[o+2]=36+178*u;
+    }
+    id.data[o+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+}
+function paintFeatInput(){
+  const ctx=$('featInput').getContext('2d');
+  ctx.fillStyle='#0E1524'; ctx.fillRect(0,0,28,28);
+  if(!lastAct){ $('featInputNote').textContent='(none yet — process a drawing on tab 01)'; return; }
+  const id=ctx.getImageData(0,0,28,28);
+  for(let i=0;i<784;i++){
+    const v=lastAct.x[i]; if(v<0.02) continue;
+    const o=i*4, k=0.15+v*0.85;
+    id.data[o]=14+228*k; id.data[o+1]=21+142*k; id.data[o+2]=36+24*k; id.data[o+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  $('featInputNote').textContent='— normalized 28×28, as the network sees it';
+}
+function buildFeatureGrid(){
+  if(!PROJ) return;
+  const meta=LAYER_META[featLayer];
+  $('gridTitle').innerHTML=`${meta.name} <span class="tag">click any neuron</span>`;
+  $('layerInfo').innerHTML=meta.info;
+  const grid=$('neuronGrid');
+  grid.className='neuron-grid'+(featLayer===2?' cols10':'');
+  grid.innerHTML=''; thumbCtxs.length=0;
+  for(let j=0;j<meta.n;j++){
+    const d=document.createElement('div'); d.className='nthumb'; d.dataset.j=j;
+    d.title = featLayer===2 ? `output neuron — digit ${j}` : `neuron ${j}`;
+    const c=document.createElement('canvas'); c.width=28;c.height=28;
+    d.appendChild(c); grid.appendChild(d);
+    const ctx=c.getContext('2d'); thumbCtxs.push(ctx);
+    paintPattern(ctx,PROJ[featLayer][j]);
+    d.addEventListener('click',()=>selectNeuron(j));
+  }
+  featSel=-1;
+  $('neuronStats').textContent='Click a neuron in the grid to inspect it.';
+  featResponseRefresh();
+}
+function selectNeuron(j){
+  featSel=j;
+  document.querySelectorAll('.nthumb').forEach(t=>t.classList.toggle('sel',+t.dataset.j===j));
+  const vec=PROJ[featLayer][j];
+  paintPattern($('bigPattern').getContext('2d'),vec);
+  /* raw incoming weight stats */
+  const nin=SIZES[featLayer], W=net.W[featLayer];
+  let mn=1e9,mx=-1e9,sum=0;
+  for(let i=0;i<nin;i++){const w=W[j*nin+i]; if(w<mn)mn=w; if(w>mx)mx=w; sum+=w;}
+  const mean=sum/nin; let vsum=0;
+  for(let i=0;i<nin;i++){const d=W[j*nin+i]-mean; vsum+=d*d;}
+  const sd=Math.sqrt(vsum/nin);
+  const label = featLayer===2 ? `output neuron for digit <b>${j}</b>` : `hidden neuron <b>#${j}</b>`;
+  $('neuronStats').innerHTML=
+    `Selected: ${label}<br>`+
+    `incoming weights: <b>${nin}</b> &nbsp; bias: <b>${net.b[featLayer][j].toFixed(3)}</b><br>`+
+    `w mean <b>${mean.toFixed(3)}</b> · σ <b>${sd.toFixed(3)}</b><br>`+
+    `w min <b>${mn.toFixed(3)}</b> · max <b>${mx.toFixed(3)}</b>`;
+  featResponseRefresh();
+}
+function featResponseRefresh(){
+  /* border glow on thumbnails + response bar for selection */
+  if(!PROJ) return;
+  paintFeatInput();
+  const acts = lastAct ? lastAct.as[featLayer+1] : null;
+  let lmax=1e-6;
+  if(acts) for(let j=0;j<acts.length;j++) if(acts[j]>lmax)lmax=acts[j];
+  document.querySelectorAll('.nthumb').forEach(t=>{
+    const j=+t.dataset.j;
+    const a=acts?acts[j]/lmax:0;
+    t.style.borderColor = a>0.15 ? `rgba(242,163,60,${0.35+a*0.65})` : 'var(--line)';
+  });
+  if(featSel>=0 && acts){
+    const raw=acts[featSel], rel=raw/lmax;
+    const kind = featLayer===2 ? `P(digit ${featSel}) = ${(raw*100).toFixed(1)}%` : `activation a = ${raw.toFixed(3)}`;
+    $('respLabel').innerHTML=`${kind} &nbsp;·&nbsp; ${(rel*100).toFixed(0)}% of layer max`;
+    $('respFill').style.width=(rel*100)+'%';
+  }else if(featSel>=0){
+    $('respLabel').textContent='No input processed yet — draw on tab 01 and press “Process network”.';
+    $('respFill').style.width='0%';
+  }
+}
+$('featLayer').addEventListener('change',e=>{featLayer=+e.target.value; buildFeatureGrid();});
+
+/* ================================================================
+   8. TAB 4 — mathematical foundations
+   Demo network 4 -> 5 -> 4 -> 3 trained on the real Iris dataset:
+   inputs  = sepal length/width, petal length/width (min-max normalized)
+   outputs = setosa / versicolor / virginica
+   sigmoid hidden layers, softmax output, cross-entropy cost.
+================================================================ */
+const IRIS=[
+[5.1,3.5,1.4,0.2,0],[4.9,3,1.4,0.2,0],[4.7,3.2,1.3,0.2,0],[4.6,3.1,1.5,0.2,0],[5,3.6,1.4,0.2,0],[5.4,3.9,1.7,0.4,0],
+[4.6,3.4,1.4,0.3,0],[5,3.4,1.5,0.2,0],[4.4,2.9,1.4,0.2,0],[4.9,3.1,1.5,0.1,0],[5.4,3.7,1.5,0.2,0],[4.8,3.4,1.6,0.2,0],
+[4.8,3,1.4,0.1,0],[4.3,3,1.1,0.1,0],[5.8,4,1.2,0.2,0],[5.7,4.4,1.5,0.4,0],[5.4,3.9,1.3,0.4,0],[5.1,3.5,1.4,0.3,0],
+[5.7,3.8,1.7,0.3,0],[5.1,3.8,1.5,0.3,0],[5.4,3.4,1.7,0.2,0],[5.1,3.7,1.5,0.4,0],[4.6,3.6,1,0.2,0],[5.1,3.3,1.7,0.5,0],
+[4.8,3.4,1.9,0.2,0],[5,3,1.6,0.2,0],[5,3.4,1.6,0.4,0],[5.2,3.5,1.5,0.2,0],[5.2,3.4,1.4,0.2,0],[4.7,3.2,1.6,0.2,0],
+[4.8,3.1,1.6,0.2,0],[5.4,3.4,1.5,0.4,0],[5.2,4.1,1.5,0.1,0],[5.5,4.2,1.4,0.2,0],[4.9,3.1,1.5,0.2,0],[5,3.2,1.2,0.2,0],
+[5.5,3.5,1.3,0.2,0],[4.9,3.6,1.4,0.1,0],[4.4,3,1.3,0.2,0],[5.1,3.4,1.5,0.2,0],[5,3.5,1.3,0.3,0],[4.5,2.3,1.3,0.3,0],
+[4.4,3.2,1.3,0.2,0],[5,3.5,1.6,0.6,0],[5.1,3.8,1.9,0.4,0],[4.8,3,1.4,0.3,0],[5.1,3.8,1.6,0.2,0],[4.6,3.2,1.4,0.2,0],
+[5.3,3.7,1.5,0.2,0],[5,3.3,1.4,0.2,0],[7,3.2,4.7,1.4,1],[6.4,3.2,4.5,1.5,1],[6.9,3.1,4.9,1.5,1],[5.5,2.3,4,1.3,1],
+[6.5,2.8,4.6,1.5,1],[5.7,2.8,4.5,1.3,1],[6.3,3.3,4.7,1.6,1],[4.9,2.4,3.3,1,1],[6.6,2.9,4.6,1.3,1],[5.2,2.7,3.9,1.4,1],
+[5,2,3.5,1,1],[5.9,3,4.2,1.5,1],[6,2.2,4,1,1],[6.1,2.9,4.7,1.4,1],[5.6,2.9,3.6,1.3,1],[6.7,3.1,4.4,1.4,1],
+[5.6,3,4.5,1.5,1],[5.8,2.7,4.1,1,1],[6.2,2.2,4.5,1.5,1],[5.6,2.5,3.9,1.1,1],[5.9,3.2,4.8,1.8,1],[6.1,2.8,4,1.3,1],
+[6.3,2.5,4.9,1.5,1],[6.1,2.8,4.7,1.2,1],[6.4,2.9,4.3,1.3,1],[6.6,3,4.4,1.4,1],[6.8,2.8,4.8,1.4,1],[6.7,3,5,1.7,1],
+[6,2.9,4.5,1.5,1],[5.7,2.6,3.5,1,1],[5.5,2.4,3.8,1.1,1],[5.5,2.4,3.7,1,1],[5.8,2.7,3.9,1.2,1],[6,2.7,5.1,1.6,1],
+[5.4,3,4.5,1.5,1],[6,3.4,4.5,1.6,1],[6.7,3.1,4.7,1.5,1],[6.3,2.3,4.4,1.3,1],[5.6,3,4.1,1.3,1],[5.5,2.5,4,1.3,1],
+[5.5,2.6,4.4,1.2,1],[6.1,3,4.6,1.4,1],[5.8,2.6,4,1.2,1],[5,2.3,3.3,1,1],[5.6,2.7,4.2,1.3,1],[5.7,3,4.2,1.2,1],
+[5.7,2.9,4.2,1.3,1],[6.2,2.9,4.3,1.3,1],[5.1,2.5,3,1.1,1],[5.7,2.8,4.1,1.3,1],[6.3,3.3,6,2.5,2],[5.8,2.7,5.1,1.9,2],
+[7.1,3,5.9,2.1,2],[6.3,2.9,5.6,1.8,2],[6.5,3,5.8,2.2,2],[7.6,3,6.6,2.1,2],[4.9,2.5,4.5,1.7,2],[7.3,2.9,6.3,1.8,2],
+[6.7,2.5,5.8,1.8,2],[7.2,3.6,6.1,2.5,2],[6.5,3.2,5.1,2,2],[6.4,2.7,5.3,1.9,2],[6.8,3,5.5,2.1,2],[5.7,2.5,5,2,2],
+[5.8,2.8,5.1,2.4,2],[6.4,3.2,5.3,2.3,2],[6.5,3,5.5,1.8,2],[7.7,3.8,6.7,2.2,2],[7.7,2.6,6.9,2.3,2],[6,2.2,5,1.5,2],
+[6.9,3.2,5.7,2.3,2],[5.6,2.8,4.9,2,2],[7.7,2.8,6.7,2,2],[6.3,2.7,4.9,1.8,2],[6.7,3.3,5.7,2.1,2],[7.2,3.2,6,1.8,2],
+[6.2,2.8,4.8,1.8,2],[6.1,3,4.9,1.8,2],[6.4,2.8,5.6,2.1,2],[7.2,3,5.8,1.6,2],[7.4,2.8,6.1,1.9,2],[7.9,3.8,6.4,2,2],
+[6.4,2.8,5.6,2.2,2],[6.3,2.8,5.1,1.5,2],[6.1,2.6,5.6,1.4,2],[7.7,3,6.1,2.3,2],[6.3,3.4,5.6,2.4,2],[6.4,3.1,5.5,1.8,2],
+[6,3,4.8,1.8,2],[6.9,3.1,5.4,2.1,2],[6.7,3.1,5.6,2.4,2],[6.9,3.1,5.1,2.3,2],[5.8,2.7,5.1,1.9,2],[6.8,3.2,5.9,2.3,2],
+[6.7,3.3,5.7,2.5,2],[6.7,3,5.2,2.3,2],[6.3,2.5,5,1.9,2],[6.5,3,5.2,2,2],[6.2,3.4,5.4,2.3,2],[5.9,3,5.1,1.8,2]
+];const SPECIES=['setosa','versicolor','virginica'];
+const FMIN=[4.3,2.0,1.0,0.1], FMAX=[7.9,4.4,6.9,2.5];
+const IRIS_X=IRIS.map(r=>Float32Array.from([0,1,2,3].map(i=>(r[i]-FMIN[i])/(FMAX[i]-FMIN[i]))));
+const IRIS_Y=IRIS.map(r=>r[4]);
+const LAND_SUB=[...Array(30).keys()].map(i=>i*5);   /* stratified 30-flower subsample */
+
+const MSIZES=[4,5,4,3];
+let mnet=null, mRes=null, mSel=null, mIter=0, mCostHist=[], mPath=[], mLand=null, mBusy=false, mPhase=-1;
+
+function makeSmallNet(){
+  const n={W:[],b:[]};
+  for(let l=1;l<MSIZES.length;l++){
+    const nin=MSIZES[l-1],nout=MSIZES[l];
+    const W=new Float32Array(nin*nout),b=new Float32Array(nout);
+    for(let i=0;i<W.length;i++)W[i]=(Math.random()*2-1)*1.4;
+    for(let i=0;i<nout;i++)b[i]=(Math.random()*2-1)*0.5;
+    n.W.push(W);n.b.push(b);
+  }
+  return n;
+}
+const sig=z=>1/(1+Math.exp(-z));
+function mInput(){
+  return [(+$('mx1').value-FMIN[0])/(FMAX[0]-FMIN[0]),
+          (+$('mx2').value-FMIN[1])/(FMAX[1]-FMIN[1]),
+          (+$('mx3').value-FMIN[2])/(FMAX[2]-FMIN[2]),
+          (+$('mx4').value-FMIN[3])/(FMAX[3]-FMIN[3])];
+}
+function mforward(x){
+  const as=[Float32Array.from(x)],zs=[];
+  let a=as[0];
+  for(let l=0;l<3;l++){
+    const nin=MSIZES[l],nout=MSIZES[l+1],W=mnet.W[l],b=mnet.b[l];
+    const z=new Float32Array(nout);
+    for(let j=0;j<nout;j++){let s=b[j];for(let i=0;i<nin;i++)s+=W[j*nin+i]*a[i];z[j]=s;}
+    zs.push(z);
+    const o=new Float32Array(nout);
+    if(l<2){ for(let j=0;j<nout;j++)o[j]=sig(z[j]); }
+    else{
+      let mx=-1e9;for(let j=0;j<nout;j++)if(z[j]>mx)mx=z[j];
+      let s=0;for(let j=0;j<nout;j++){o[j]=Math.exp(z[j]-mx);s+=o[j];}
+      for(let j=0;j<nout;j++)o[j]/=s;
+    }
+    a=o;as.push(o);
+  }
+  return {as,zs};
+}
+/* single-sample backprop; optionally accumulate into external grads */
+function mbackprop(x,t,accW,accB){
+  const {as,zs}=mforward(x);
+  const deltas=[null,null,null];
+  const gW=accW||mnet.W.map(W=>new Float32Array(W.length));
+  const gb=accB||mnet.b.map(b=>new Float32Array(b.length));
+  let delta=new Float32Array(3);
+  for(let j=0;j<3;j++) delta[j]=as[3][j]-(j===t?1:0);
+  for(let l=2;l>=0;l--){
+    deltas[l]=delta;
+    const nin=MSIZES[l],nout=MSIZES[l+1],a=as[l];
+    for(let j=0;j<nout;j++){
+      const d=delta[j]; gb[l][j]+=d;
+      for(let i=0;i<nin;i++) gW[l][j*nin+i]+=d*a[i];
+    }
+    if(l>0){
+      const nd=new Float32Array(nin),W=mnet.W[l];
+      for(let i=0;i<nin;i++){
+        let s=0;for(let j=0;j<nout;j++)s+=W[j*nin+i]*delta[j];
+        nd[i]=s*as[l][i]*(1-as[l][i]);   /* sigma'(z)=a(1-a) */
+      }
+      delta=nd;
+    }
+  }
+  const loss=-Math.log(Math.max(as[3][t],1e-9));
+  let gn=0;
+  gW.forEach(G=>{for(let i=0;i<G.length;i++)gn+=G[i]*G[i];});
+  gb.forEach(G=>{for(let i=0;i<G.length;i++)gn+=G[i]*G[i];});
+  return {loss,as,zs,deltas,gW,gb,gn:Math.sqrt(gn),t};
+}
+/* full-batch pass over all 150 flowers: mean loss, mean grads, accuracy */
+function mBatch(){
+  const gW=mnet.W.map(W=>new Float32Array(W.length));
+  const gb=mnet.b.map(b=>new Float32Array(b.length));
+  let loss=0,correct=0;
+  for(let k=0;k<150;k++){
+    const r=mbackprop(IRIS_X[k],IRIS_Y[k],gW,gb);
+    loss+=r.loss;
+    let p=0;for(let j=1;j<3;j++)if(r.as[3][j]>r.as[3][p])p=j;
+    if(p===IRIS_Y[k])correct++;
+  }
+  const inv=1/150;
+  gW.forEach(G=>{for(let i=0;i<G.length;i++)G[i]*=inv;});
+  gb.forEach(G=>{for(let i=0;i<G.length;i++)G[i]*=inv;});
+  let gn=0;
+  gW.forEach(G=>{for(let i=0;i<G.length;i++)gn+=G[i]*G[i];});
+  gb.forEach(G=>{for(let i=0;i<G.length;i++)gn+=G[i]*G[i];});
+  return {loss:loss*inv,gW,gb,gn:Math.sqrt(gn),acc:correct/150};
+}
+function mDatasetCost(sub){
+  let loss=0;
+  for(const k of sub){
+    const {as}=mforward(IRIS_X[k]);
+    loss+=-Math.log(Math.max(as[3][IRIS_Y[k]],1e-9));
+  }
+  return loss/sub.length;
+}
+
+/* ---------- live network visualization ---------- */
+const bp=$('bpNet'),bpx=bp.getContext('2d');
+const M_NODES=[];
+function mLayerYs(n,H){
+  const pad=44,span=H-2*pad,ys=[];
+  for(let i=0;i<n;i++) ys.push(pad+span*(n===1?0.5:i/(n-1)));
+  return ys;
+}
+const IN_LABELS=['sep L','sep W','pet L','pet W'];
+function drawBPNet(){
+  const W=bp.width,H=bp.height;
+  bpx.clearRect(0,0,W,H);
+  M_NODES.length=0;
+  const COLS=[64,212,352,468];
+  const ys=MSIZES.map(n=>mLayerYs(n,H));
+  const showDelta = mRes && mRes.deltas;
+  for(let l=0;l<3;l++){
+    for(let j=0;j<MSIZES[l+1];j++){
+      for(let i=0;i<MSIZES[l];i++){
+        const w=mnet.W[l][j*MSIZES[l]+i];
+        const mag=clamp(Math.abs(w)/2,0.05,1);
+        const isSel = mSel && mSel.l===l+1 && mSel.j===j;
+        let col = w>=0?`rgba(29,91,214,${0.12+mag*0.5})`:`rgba(214,69,69,${0.12+mag*0.5})`;
+        if(showDelta && mPhase>=0 && mPhase<=l) col=`rgba(214,69,69,${0.3+mag*0.55})`;
+        if(isSel) col = w>=0?'rgba(29,91,214,0.95)':'rgba(214,69,69,0.95)';
+        bpx.strokeStyle=col; bpx.lineWidth=(0.6+mag*3.2)*(isSel?1.4:1);
+        bpx.beginPath();bpx.moveTo(COLS[l],ys[l][i]);bpx.lineTo(COLS[l+1],ys[l+1][j]);bpx.stroke();
+        if(isSel){
+          const fx=COLS[l]+(COLS[l+1]-COLS[l])*0.42, fy=ys[l][i]+(ys[l+1][j]-ys[l][i])*0.42;
+          bpx.fillStyle='#fff';bpx.fillRect(fx-21,fy-8,42,14);
+          bpx.fillStyle=w>=0?'#1D5BD6':'#D64545';
+          bpx.font='10px IBM Plex Mono';bpx.textAlign='center';
+          bpx.fillText(w.toFixed(2),fx,fy+3);
+        }
+      }
+    }
+  }
+  const acts = mRes ? mRes.as : mforward(mInput()).as;
+  const t=+$('mTarget').value;
+  for(let l=0;l<4;l++){
+    for(let j=0;j<MSIZES[l];j++){
+      const x=COLS[l],y=ys[l][j],a=acts[l][j];
+      M_NODES.push({l,j,x,y});
+      const hot = l>0 && a>0.5;
+      bpx.beginPath();bpx.arc(x,y,17,0,7);
+      bpx.fillStyle = l===0 ? '#F4F6F9' : `rgba(242,163,60,${0.08+clamp(a,0,1)*0.55})`;
+      bpx.fill();
+      const sel = mSel && mSel.l===l && mSel.j===j;
+      bpx.strokeStyle = sel ? '#E07B12' : (hot?'#E0A23C':'#8FA3C2');
+      bpx.lineWidth = sel?2.5:1.5; bpx.stroke();
+      if(l===3 && j===t){ /* amber target ring */
+        bpx.beginPath();bpx.arc(x,y,22,0,7);
+        bpx.strokeStyle='#F2A33C';bpx.lineWidth=2;bpx.setLineDash([4,3]);bpx.stroke();bpx.setLineDash([]);
+      }
+      bpx.fillStyle='#17263B';bpx.font='600 11px IBM Plex Mono';bpx.textAlign='center';
+      bpx.fillText(a.toFixed(2),x,y+4);
+      if(showDelta && l>0 && (mPhase<0 || mPhase<=l-1)){
+        const d=mRes.deltas[l-1][j];
+        bpx.fillStyle='#D64545';bpx.font='10px IBM Plex Mono';
+        bpx.fillText('δ '+(d>=0?'+':'')+d.toFixed(2),x,y+33);
+      }
+      if(l===3){
+        bpx.fillStyle = j===t ? '#E07B12' : '#5A6B84';
+        bpx.font=(j===t?'600 ':'')+'10px IBM Plex Mono';bpx.textAlign='left';
+        bpx.fillText(SPECIES[j],x+27,y+4);
+      }
+      if(l===0){
+        bpx.fillStyle='#5A6B84';bpx.font='10px IBM Plex Mono';bpx.textAlign='right';
+        bpx.fillText(IN_LABELS[j],x-22,y+4);
+      }
+    }
+  }
+  bpx.fillStyle='#7E93B4';bpx.font='10.5px IBM Plex Mono';bpx.textAlign='center';
+  bpx.fillText('input 4',COLS[0],H-8);
+  bpx.fillText('hidden 5 · σ',COLS[1],H-8);
+  bpx.fillText('hidden 4 · σ',COLS[2],H-8);
+  bpx.fillText('output 3 · softmax',COLS[3]-4,H-8);
+  bpx.textAlign='left';
+}
+bp.addEventListener('click',e=>{
+  const r=bp.getBoundingClientRect();
+  const x=(e.clientX-r.left)*bp.width/r.width, y=(e.clientY-r.top)*bp.height/r.height;
+  let best=null,bd=1e9;
+  M_NODES.forEach(n=>{const d=Math.hypot(n.x-x,n.y-y); if(d<bd){bd=d;best=n;}});
+  if(best && bd<26){
+    mSel = (mSel && mSel.l===best.l && mSel.j===best.j) ? null : {l:best.l,j:best.j};
+    showSelWeights(); drawBPNet();
+  }
+});
+function showSelWeights(){
+  const box=$('bpWeights');
+  if(!mSel){box.innerHTML='';return;}
+  const {l,j}=mSel;
+  const name = l===0?`input “${IN_LABELS[j]}”` : l===3?`output “${SPECIES[j]}”` : `hidden${l}[${j}]`;
+  if(l===0){ box.innerHTML=`Selected: <b>${name}</b> — inputs have no incoming weights.`; return; }
+  const nin=MSIZES[l-1],W=mnet.W[l-1];
+  const ws=[]; for(let i=0;i<nin;i++) ws.push(W[j*nin+i].toFixed(2));
+  box.innerHTML=`Selected: <b>${name}</b> · incoming w = [${ws.join(', ')}] · bias = <b>${mnet.b[l-1][j].toFixed(2)}</b>`;
+}
+
+/* ---------- stats / trace ---------- */
+function mSampleStats(res){
+  let p=0;for(let j=1;j<3;j++)if(res.as[3][j]>res.as[3][p])p=j;
+  $('msPred').textContent=SPECIES[p]+(p===res.t?' ✓':'');
+  $('msAcc').textContent=(res.as[3][res.t]*100).toFixed(1)+'%';
+}
+function mTrace(res,applied){
+  const t=res.t, eta=+$('eta').value;
+  let j=0;for(let i=1;i<4;i++)if(res.as[2][i]>res.as[2][j])j=i;
+  const aj=res.as[2][j], at=res.as[3][t], dt=res.deltas[2][t];
+  const w=mnet.W[2][t*4+j], grad=dt*aj, wNew=w-eta*grad;
+  $('mathCalc').innerHTML=
+    `<span class="lbl">tracing </span>  w: hidden₂[${j}] → ${SPECIES[t]}<br>`+
+    `<span class="lbl">forward </span>  a_j = ${aj.toFixed(3)}   a_t = softmax(z)_${t} = <span class="hi">${at.toFixed(3)}</span><br>`+
+    `<span class="lbl">backward</span>  δ_t = a_t − y_t = ${at.toFixed(3)} − 1 = <span class="hi">${dt.toFixed(3)}</span><br>`+
+    `<span class="lbl">gradient</span>  ∂C/∂w = δ_t · a_j = ${dt.toFixed(3)} × ${aj.toFixed(3)} = <span class="hi">${grad.toFixed(4)}</span><br>`+
+    (applied
+      ? `<span class="lbl">applied </span>  batch-mean update done · w is now <span class="hi">${w.toFixed(4)}</span>`
+      : `<span class="lbl">update  </span>  w ← ${w.toFixed(4)} − ${eta.toFixed(2)}×(${grad.toFixed(4)}) = <span class="hi">${wNew.toFixed(4)}</span><br>`+
+        `<span class="lbl">(this flower's contribution — training averages over all 150)</span>`);
+}
+
+/* ---------- cost landscape over the Iris subsample ---------- */
+const lc=$('costLandscape'),lcx=lc.getContext('2d');
+function landIdx(t,as){
+  const order=[...Array(4).keys()].sort((a,b)=>as[2][b]-as[2][a]);
+  return {i1:t*4+order[0], i2:t*4+order[1], j1:order[0], j2:order[1]};
+}
+function drawLandscape(){
+  const t=+$('mTarget').value;
+  const {as}=mforward(mInput());
+  if(!mLand) mLand=landIdx(t,as);
+  const {i1,i2,j1,j2}=mLand;
+  const W2=mnet.W[2], c1=W2[i1], c2=W2[i2];
+  const R=4, N=25;
+  const cells=[]; let cmin=1e9,cmax=-1e9;
+  for(let r=0;r<N;r++){
+    const row=[];
+    for(let c=0;c<N;c++){
+      W2[i1]=c1-R+2*R*c/(N-1);
+      W2[i2]=c2-R+2*R*(N-1-r)/(N-1);
+      const C=mDatasetCost(LAND_SUB);
+      row.push(C); if(C<cmin)cmin=C; if(C>cmax)cmax=C;
+    }
+    cells.push(row);
+  }
+  W2[i1]=c1; W2[i2]=c2;
+  const Wc=lc.width,H=lc.height, ml=46, pw=Wc-ml-12, ph=H-42;
+  lcx.clearRect(0,0,Wc,H);
+  const cw=pw/N,ch=ph/N;
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const u=(cells[r][c]-cmin)/Math.max(cmax-cmin,1e-9);
+    lcx.fillStyle=`rgb(${244-230*u|0},${246-225*u|0},${249-213*u|0})`;
+    lcx.fillRect(ml+c*cw,12+r*ch,cw+0.5,ch+0.5);
+  }
+  lcx.strokeStyle='#B9C4D6';lcx.strokeRect(ml,12,pw,ph);
+  lcx.fillStyle='#5A6B84';lcx.font='11px IBM Plex Mono';lcx.textAlign='center';
+  lcx.fillText(`w_a  (h₂[${j1}] → ${SPECIES[t]})`,ml+pw/2,H-8);
+  lcx.save();lcx.translate(14,12+ph/2);lcx.rotate(-Math.PI/2);
+  lcx.fillText(`w_b  (h₂[${j2}] → ${SPECIES[t]})`,0,0);lcx.restore();
+  lcx.textAlign='left';
+  lcx.fillText(`C ${cmin.toFixed(2)} light → ${cmax.toFixed(2)} dark`,ml+6,26);
+  const toXY=(wa,wb)=>[ml+((wa-c1+R)/(2*R))*pw, 12+((c2+R-wb)/(2*R))*ph];
+  if(mPath.length){
+    lcx.strokeStyle='rgba(242,163,60,0.85)';lcx.lineWidth=1.6;lcx.beginPath();
+    let started=false;
+    mPath.forEach(p=>{const [X,Y]=toXY(p[0],p[1]);
+      if(X<ml||X>ml+pw||Y<12||Y>12+ph)return;
+      started?lcx.lineTo(X,Y):lcx.moveTo(X,Y); started=true;});
+    lcx.stroke();
+    mPath.forEach((p,i)=>{
+      const [X,Y]=toXY(p[0],p[1]);
+      if(X<ml||X>ml+pw||Y<12||Y>12+ph)return;
+      lcx.beginPath();lcx.arc(X,Y,i===mPath.length-1?5:2.4,0,7);
+      lcx.fillStyle=i===mPath.length-1?'#E07B12':'#F2A33C';lcx.fill();
+      if(i===mPath.length-1){lcx.strokeStyle='#fff';lcx.lineWidth=1.6;lcx.stroke();}
+    });
+  }
+}
+const cv=$('costCurve'),cvx=cv.getContext('2d');
+function drawCostCurve(){
+  const W=cv.width,H=cv.height, ml=44,mb=26;
+  cvx.clearRect(0,0,W,H);
+  cvx.strokeStyle='#EDF0F5';
+  for(let i=1;i<5;i++){cvx.beginPath();cvx.moveTo(ml,12+(H-mb-12)*i/5);cvx.lineTo(W-8,12+(H-mb-12)*i/5);cvx.stroke();}
+  cvx.strokeStyle='#B9C4D6';cvx.strokeRect(ml,12,W-ml-8,H-mb-12);
+  cvx.fillStyle='#5A6B84';cvx.font='11px IBM Plex Mono';cvx.textAlign='center';
+  cvx.fillText('iteration (full-batch steps)',ml+(W-ml-8)/2,H-6);
+  if(mCostHist.length<1){cvx.fillText('run gradient descent to plot dataset cost',ml+(W-ml-8)/2,H/2);return;}
+  const mx=Math.max(...mCostHist,0.01);
+  const X=i=>ml+(W-ml-8)*(mCostHist.length===1?0.5:i/(mCostHist.length-1));
+  const Y=c=>12+(H-mb-12)*(1-c/mx);
+  cvx.strokeStyle='#1D5BD6';cvx.lineWidth=2;cvx.beginPath();
+  mCostHist.forEach((c,i)=>i===0?cvx.moveTo(X(i),Y(c)):cvx.lineTo(X(i),Y(c)));
+  cvx.stroke();
+  cvx.fillStyle='#17263B';cvx.textAlign='left';
+  cvx.fillText(`C = ${mCostHist[mCostHist.length-1].toFixed(4)}`,ml+6,24);
+}
+
+/* ---------- actions ---------- */
+function mApply(g){
+  const eta=+$('eta').value;
+  for(let l=0;l<3;l++){
+    const W=mnet.W[l],G=g.gW[l],b=mnet.b[l],Gb=g.gb[l];
+    for(let i=0;i<W.length;i++) W[i]-=eta*G[i];
+    for(let i=0;i<b.length;i++) b[i]-=eta*Gb[i];
+  }
+}
+function mRefreshSample(){
+  mRes=mbackprop(mInput(),+$('mTarget').value);
+  mSampleStats(mRes);
+}
+function mGDStep(){
+  const g=mBatch();
+  mApply(g);
+  mIter++; mCostHist.push(g.loss);
+  if(!mLand){const {as}=mforward(mInput()); mLand=landIdx(+$('mTarget').value,as);}
+  mPath.push([mnet.W[2][mLand.i1],mnet.W[2][mLand.i2]]);
+  $('msCost').textContent=g.loss.toFixed(4);
+  $('msGrad').textContent=g.gn.toFixed(4);
+  $('msIter').textContent=mIter;
+  $('msDataAcc').textContent=(g.acc*100).toFixed(1)+'%';
+  return g;
+}
+function loadSample(cls){
+  const pool = cls==null ? [...Array(150).keys()] : [...Array(50).keys()].map(i=>cls*50+i);
+  const k=pool[(Math.random()*pool.length)|0];
+  const r=IRIS[k];
+  [['mx1',r[0]],['mx2',r[1]],['mx3',r[2]],['mx4',r[3]]].forEach(([id,v])=>{
+    $(id).value=v; $(id+'v').textContent=(+v).toFixed(1);
+  });
+  $('mTarget').value=r[4];
+  mSampleChanged();
+  $('msState').textContent=`loaded real flower #${k+1} — a ${SPECIES[r[4]]}`;
+}
+function mSampleChanged(){
+  mRes=null; mLand=null; mPath=[]; mPhase=-1;
+  mRefreshSample();
+  drawBPNet(); drawLandscape();
+}
+$('loadSet').addEventListener('click',()=>loadSample(0));
+$('loadVers').addEventListener('click',()=>loadSample(1));
+$('loadVirg').addEventListener('click',()=>loadSample(2));
+$('loadRand').addEventListener('click',()=>loadSample(null));
+
+$('btnMathBP').addEventListener('click',async ()=>{
+  if(mBusy)return; mBusy=true;
+  mRes=mbackprop(mInput(),+$('mTarget').value);
+  mSampleStats(mRes); mTrace(mRes,false);
+  $('msCost').textContent=mRes.loss.toFixed(4)+' *';
+  $('msGrad').textContent=mRes.gn.toFixed(4)+' *';
+  $('msState').textContent='backprop on this flower — * = single-sample values, δ shown in red';
+  for(const ph of [2,1,0]){ mPhase=ph; drawBPNet(); await new Promise(r=>setTimeout(r,480)); }
+  mPhase=-1; drawBPNet(); drawLandscape(); drawCostCurve();
+  mBusy=false;
+});
+$('btnMathGD').addEventListener('click',()=>{
+  if(mBusy)return;
+  const before=mRes||mbackprop(mInput(),+$('mTarget').value);
+  mGDStep();
+  mRefreshSample(); mTrace(before,true);
+  $('msState').textContent='one full-batch step applied (mean gradient over all 150 flowers)';
+  drawBPNet(); drawLandscape(); drawCostCurve(); showSelWeights();
+});
+$('btnMathCycle').addEventListener('click',async ()=>{
+  if(mBusy)return; mBusy=true;
+  $('msState').textContent='training on all 150 flowers…';
+  let g=null;
+  for(let k=0;k<120;k++){
+    g=mGDStep();
+    if(k%3===0||k===119){
+      mRefreshSample(); drawBPNet(); drawLandscape(); drawCostCurve();
+      await new Promise(r=>setTimeout(r,40));
+    }
+    if(g.loss<0.05) break;
+  }
+  mRefreshSample(); mTrace(mRes,true);
+  drawBPNet(); drawLandscape(); drawCostCurve(); showSelWeights();
+  $('msState').textContent=`training done — ${(g.acc*100).toFixed(1)}% of the 150 flowers classified correctly`;
+  mBusy=false;
+});
+$('btnMathReset').addEventListener('click',()=>{
+  if(mBusy)return;
+  mnet=makeSmallNet();
+  mRes=null; mSel=null; mIter=0; mCostHist=[]; mPath=[]; mLand=null; mPhase=-1;
+  $('msCost').textContent='—';$('msGrad').textContent='—';$('msIter').textContent='0';
+  $('msDataAcc').textContent='—';$('msPred').textContent='—';$('msAcc').textContent='—';
+  $('msState').textContent='forward only — new random weights';
+  $('mathCalc').textContent='Press “Start backpropagation” to trace one weight.';
+  mRefreshSample();
+  drawBPNet(); drawLandscape(); drawCostCurve(); showSelWeights();
+});
+['mx1','mx2','mx3','mx4'].forEach(id=>{
+  $(id).addEventListener('input',()=>{
+    $(id+'v').textContent=(+$(id).value).toFixed(1);
+    $('msState').textContent='custom measurements — pick the correct target species yourself';
+    mSampleChanged();
+  });
+});
+$('eta').addEventListener('input',e=>$('etaV').textContent=(+e.target.value).toFixed(2));
+$('mTarget').addEventListener('change',()=>{
+  $('msState').textContent='target species changed';
+  mSampleChanged();
+});
+mnet=makeSmallNet();
+loadSample(null);
+drawCostCurve();
+/* boot */
+drawNeuronAll();
+train();
+</script>
+</body>
+</html>
