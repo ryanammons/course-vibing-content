@@ -356,27 +356,37 @@
   <p style="margin:4px 0;">Two people who are close on the legitimate features (<code>d(x,y)</code> small) must receive close outputs. The hard part: choosing <code>d</code> &mdash; a bad similarity metric can smuggle bias back in.</p>
 </div>
 
-<p>Below, Individual A is fixed. Adjust how different Individual B is on the <em>legitimate</em> features, and optionally give B a different protected-group membership. Then compare a <strong>fair model</strong> (ignores the protected attribute) with a <strong>biased model</strong> (uses it).</p>
+<p>Below, Individual A is fixed. Slide how different Individual B is on the <em>legitimate</em> features (d), and set the tolerance L. The green region is everything the rule permits. Turn on the biased model with B in a different protected group and watch the point jump above the line &mdash; the violation is worst when the two people are most alike.</p>
 
 <div class="widget" id="w-indiv">
   <h4>Interactive 3 &middot; Similar people, similar treatment?</h4>
-  <p class="hint">Individual fairness holds when near-identical people (small legitimate distance) get near-identical scores.</p>
+  <p class="hint">The shaded region is what the rule allows: any point on or below the line |f(A)&minus;f(B)| = L&middot;d is fair. Drag the dot outside it to break the rule.</p>
 
   <div class="control-row">
-    <label>B's difference on legit. features</label>
-    <input type="range" id="indiv-dist" min="0" max="1" step="0.01" value="0.05">
-    <span class="val" id="indiv-dist-val">0.05</span>
+    <label>B's difference on legit. features (d)</label>
+    <input type="range" id="indiv-dist" min="0" max="1" step="0.01" value="0.10">
+    <span class="val" id="indiv-dist-val">0.10</span>
+  </div>
+  <div class="control-row">
+    <label>Fairness tolerance (L)</label>
+    <input type="range" id="indiv-L" min="0.5" max="3" step="0.1" value="2.0">
+    <span class="val" id="indiv-L-val">2.0</span>
   </div>
   <div class="toggle-row">
     <label><input type="checkbox" id="indiv-protected"> B is in a different protected group</label>
     <label><input type="checkbox" id="indiv-biased"> Use the biased model (relies on protected group)</label>
   </div>
 
+  <div class="chart-wrap">
+    <canvas id="indiv-chart" height="200"></canvas>
+  </div>
+
   <div class="readout">
-    <div class="stat"><div class="k">Legit. feature distance d(A,B)</div><div class="v" id="indiv-d">--</div></div>
+    <div class="stat"><div class="k">Distance d(A,B)</div><div class="v" id="indiv-d">--</div></div>
     <div class="stat"><div class="k">Score A</div><div class="v" id="indiv-fa">--</div></div>
     <div class="stat"><div class="k">Score B</div><div class="v" id="indiv-fb">--</div></div>
-    <div class="stat"><div class="k">Output gap |f(A)&minus;f(B)|</div><div class="v" id="indiv-gap">--</div></div>
+    <div class="stat"><div class="k">Output gap</div><div class="v" id="indiv-gap">--</div></div>
+    <div class="stat"><div class="k">Allowed max (L&middot;d)</div><div class="v" id="indiv-bound">--</div></div>
   </div>
   <div class="verdict" id="indiv-verdict">--</div>
 </div>
@@ -396,12 +406,12 @@
   </div>
 
   <div class="kc-question" data-answer="d">
-    <p class="stem">2. In the widget, the biased model gives two people who are nearly identical on legitimate features different scores. This happens because:</p>
+    <p class="stem">2. In the widget, the biased model's point sits above the allowed line only when d is small. Why does bias violate individual fairness most for <em>similar</em> people?</p>
     <div class="kc-options">
-      <button data-choice="a">Their legitimate features are actually far apart</button>
-      <button data-choice="b">Individual fairness is satisfied</button>
-      <button data-choice="c">The similarity metric is perfect</button>
-      <button data-choice="d">The model's output depends on the protected group</button>
+      <button data-choice="a">Because their legitimate features are actually far apart</button>
+      <button data-choice="b">Because the tolerance L is negative</button>
+      <button data-choice="c">Because the similarity metric is perfect</button>
+      <button data-choice="d">Because the allowed gap L&middot;d shrinks toward 0 as d shrinks, while the bias adds a fixed offset</button>
     </div>
     <div class="kc-feedback"></div>
   </div>
@@ -445,9 +455,11 @@
   </div>
 
   <div class="readout">
+    <div class="stat"><div class="k">Group A threshold</div><div class="v" id="cmp-thr-a">--</div></div>
+    <div class="stat"><div class="k">Group B threshold</div><div class="v" id="cmp-thr-b">--</div></div>
     <div class="stat"><div class="k">Group parity gap</div><div class="v" id="cmp-gap">--</div></div>
-    <div class="stat"><div class="k">Twin A (score 0.50)</div><div class="v" id="cmp-twin-a">--</div></div>
-    <div class="stat"><div class="k">Twin B (score 0.50)</div><div class="v" id="cmp-twin-b">--</div></div>
+    <div class="stat"><div class="k">Twin A (score 0.55)</div><div class="v" id="cmp-twin-a">--</div></div>
+    <div class="stat"><div class="k">Twin B (score 0.55)</div><div class="v" id="cmp-twin-b">--</div></div>
   </div>
   <div class="verdict" id="cmp-verdict">--</div>
 </div>
@@ -562,14 +574,42 @@
   var rateAEl = document.getElementById("rate-a"), rateBEl = document.getElementById("rate-b"), dpGapEl = document.getElementById("dp-gap");
   var groupVerdict = document.getElementById("group-verdict");
 
-  // Draw threshold lines by overlaying vertical marker datasets
-  function thresholdLineDataset(threshold, color) {
-    var maxY = normPdf(0, 0, SIGMA); // approx peak height
-    return {
-      label: "_thr", data: xs.map(function (x) { return Math.abs(x - threshold) < 0.005 ? maxY * 1.15 : null; }),
-      borderColor: color, borderWidth: 2, pointRadius: 0, spanGaps: false, borderDash: [5, 4]
-    };
-  }
+  // Draw threshold markers as real vertical lines via a Chart.js plugin.
+  // (A dataset with a single non-null point and pointRadius:0 draws nothing -
+  // a line needs two points - which is why the old approach was invisible.)
+  var thresholdLinesPlugin = {
+    id: "thresholdLines",
+    afterDatasetsDraw: function (chart) {
+      var lines = chart.$thresholdLines;
+      if (!lines || !lines.length) { return; }
+      var ctx = chart.ctx, area = chart.chartArea, xScale = chart.scales.x;
+      lines.forEach(function (ln) {
+        var idx = Math.round(ln.value * 100);           // xs steps of 0.01
+        var px = xScale.getPixelForValue(idx);
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = ln.color;
+        ctx.moveTo(px, area.top);
+        ctx.lineTo(px, area.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // shade the "accepted" side (scores above the threshold)
+        ctx.globalAlpha = 0.10;
+        ctx.fillStyle = ln.color;
+        ctx.fillRect(px, area.top, area.right - px, area.bottom - area.top);
+        ctx.globalAlpha = 1;
+        // label
+        ctx.fillStyle = ln.color;
+        ctx.font = "600 11px sans-serif";
+        ctx.textAlign = px > (area.left + area.right) / 2 ? "right" : "left";
+        ctx.fillText(ln.label, px + (ctx.textAlign === "right" ? -4 : 4), area.top + ln.offset);
+        ctx.restore();
+      });
+    }
+  };
+  if (window.Chart && Chart.register) { Chart.register(thresholdLinesPlugin); }
 
   function updateGroup() {
     var ta = parseFloat(thrA.value), tb = parseFloat(thrB.value);
@@ -581,18 +621,21 @@
     var gap = Math.abs(ra - rb);
     dpGapEl.textContent = pct(gap);
 
-    // keep only the two base datasets, then re-add threshold markers
-    groupChart.data.datasets = groupChart.data.datasets.slice(0, 2);
-    groupChart.data.datasets.push(thresholdLineDataset(ta, "#2b6cb0"));
-    groupChart.data.datasets.push(thresholdLineDataset(tb, "#b7791f"));
+    groupChart.$thresholdLines = [
+      { value: ta, color: "#2b6cb0", label: "A accepts \u2265 " + ta.toFixed(2), offset: 12 },
+      { value: tb, color: "#b7791f", label: "B accepts \u2265 " + tb.toFixed(2), offset: 28 }
+    ];
     groupChart.update();
 
     if (gap < 0.02) {
       groupVerdict.className = "verdict pass";
-      groupVerdict.textContent = "\u2713 Demographic parity reached (gap < 2%). Notice you needed a LOWER threshold for Group B to get here.";
+      groupVerdict.textContent = "\u2713 Demographic parity reached (gap " + pct(gap) +
+        "). Notice you needed a LOWER threshold for Group B (" + tb.toFixed(2) +
+        " vs " + ta.toFixed(2) + ") to get here.";
     } else {
       groupVerdict.className = "verdict fail";
-      groupVerdict.textContent = "\u2717 Groups are accepted at different rates (gap " + pct(gap) + "). Demographic parity is not satisfied.";
+      groupVerdict.textContent = "\u2717 Groups accepted at different rates: A " + pct(ra) +
+        " vs B " + pct(rb) + " (gap " + pct(gap) + "). Demographic parity not satisfied.";
     }
   }
   thrA.addEventListener("input", updateGroup);
@@ -667,47 +710,101 @@
   // ======================================================
   // Interactive 3: Individual fairness (Lipschitz idea)
   // ======================================================
-  // Legitimate features: A fixed. B moves away by "dist" along the feature space.
-  // Fair model:   f = w . legit_features                (ignores protected group)
-  // Biased model: f = w . legit_features + c * protected (uses protected group)
-  var W_NORM = 1.0;      // effective Lipschitz constant of the fair model
-  var BIAS_C = 0.35;     // how much the biased model shifts on protected group
-  var L = 1.05;          // fairness tolerance (slightly above w-norm)
+  // Legitimate features: A is fixed; B differs by distance d. The fair model
+  // scores on legitimate features only; the biased model adds a fixed penalty
+  // for being in the other protected group.
+  //   fair:   f(B) = 0.55 + d
+  //   biased: f(B) = 0.55 + d + BIAS_C   (only if B is in the other group)
+  // Individual fairness requires |f(A)-f(B)| <= L*d.
+  // With the biased model the violation is: d + BIAS_C > L*d, i.e. d < BIAS_C/(L-1).
+  // So bias breaks the rule precisely for SIMILAR people (small d) - the crossing
+  // point moves as you change L, which is the thing to notice.
+  var INDIV_BASE = 0.55;
+  var BIAS_C = 0.35;
 
   var indivDist = document.getElementById("indiv-dist"), indivDistVal = document.getElementById("indiv-dist-val");
+  var indivL = document.getElementById("indiv-L"), indivLVal = document.getElementById("indiv-L-val");
   var indivProtected = document.getElementById("indiv-protected"), indivBiased = document.getElementById("indiv-biased");
   var indivDEl = document.getElementById("indiv-d"), indivFaEl = document.getElementById("indiv-fa"),
-      indivFbEl = document.getElementById("indiv-fb"), indivGapEl = document.getElementById("indiv-gap");
+      indivFbEl = document.getElementById("indiv-fb"), indivGapEl = document.getElementById("indiv-gap"),
+      indivBoundEl = document.getElementById("indiv-bound");
   var indivVerdict = document.getElementById("indiv-verdict");
+
+  var indivChart = new Chart(document.getElementById("indiv-chart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels: xs,
+      datasets: [
+        { label: "Allowed ceiling  L\u00b7d", data: xs.map(function (x) { return 2.0 * x; }),
+          borderColor: "#2e7d32", backgroundColor: "rgba(46,125,50,0.10)", fill: true,
+          borderWidth: 2, pointRadius: 0, tension: 0 },
+        { label: "This pair (d, output gap)", data: xs.map(function () { return null; }),
+          borderColor: "#c62828", backgroundColor: "#c62828",
+          pointRadius: 7, pointHoverRadius: 7, showLine: false }
+      ]
+    },
+    options: {
+      responsive: true, animation: { duration: 120 },
+      scales: {
+        x: { title: { display: true, text: "distance between the two people, d" },
+             ticks: { maxTicksLimit: 11, callback: function (v, idx) { return (idx % 20 === 0) ? xs[idx].toFixed(1) : ""; } } },
+        y: { title: { display: true, text: "output gap" }, min: 0, max: 1.6 }
+      },
+      plugins: { legend: { position: "bottom" } }
+    }
+  });
 
   function updateIndiv() {
     var d = parseFloat(indivDist.value);
+    var L = parseFloat(indivL.value);
     indivDistVal.textContent = d.toFixed(2);
-    var scoreA = 0.55;                       // A's fair-model score (fixed baseline)
-    var scoreB = 0.55 + W_NORM * d;          // B moves by legit distance
-    if (indivBiased.checked && indivProtected.checked) {
-      scoreB += BIAS_C;                      // biased model penalizes/rewards protected group
-    }
+    indivLVal.textContent = L.toFixed(1);
+
+    var scoreA = INDIV_BASE;
+    var scoreB = INDIV_BASE + d;
+    var biasApplied = indivBiased.checked && indivProtected.checked;
+    if (biasApplied) { scoreB += BIAS_C; }
+
     var gap = Math.abs(scoreA - scoreB);
+    var bound = L * d;
+
     indivDEl.textContent = d.toFixed(2);
     indivFaEl.textContent = scoreA.toFixed(2);
     indivFbEl.textContent = scoreB.toFixed(2);
     indivGapEl.textContent = gap.toFixed(2);
+    indivBoundEl.textContent = bound.toFixed(2);
 
-    // Individual fairness: output gap must not exceed L * d
-    var bound = L * d;
+    // redraw ceiling for the current L and place the pair's point
+    indivChart.data.datasets[0].data = xs.map(function (x) { return L * x; });
+    var pointIdx = Math.round(d * 100);
+    indivChart.data.datasets[1].data = xs.map(function (_, i) { return i === pointIdx ? gap : null; });
+    indivChart.data.datasets[1].borderColor = gap <= bound + 1e-9 ? "#2e7d32" : "#c62828";
+    indivChart.data.datasets[1].backgroundColor = gap <= bound + 1e-9 ? "#2e7d32" : "#c62828";
+    indivChart.update();
+
     if (gap <= bound + 1e-9) {
       indivVerdict.className = "verdict pass";
-      indivVerdict.textContent = "\u2713 Individual fairness holds: output gap " + gap.toFixed(2) +
-        " \u2264 L\u00b7d = " + bound.toFixed(2) + ". Similar people are treated similarly.";
+      indivVerdict.textContent = "\u2713 Individual fairness holds: gap " + gap.toFixed(2) +
+        " \u2264 L\u00b7d = " + bound.toFixed(2) + "." +
+        (biasApplied
+          ? " The bias is still there, but these two people are different enough (d = " + d.toFixed(2) +
+            ") that it stays within tolerance."
+          : " Similar people are treated similarly.");
     } else {
       indivVerdict.className = "verdict fail";
-      indivVerdict.textContent = "\u2717 Individual fairness violated: output gap " + gap.toFixed(2) +
-        " > L\u00b7d = " + bound.toFixed(2) + ". Two similar people are treated differently" +
-        (indivBiased.checked && indivProtected.checked ? " \u2014 because the biased model used their protected group." : ".");
+      var why = biasApplied
+        ? " The biased model added " + BIAS_C.toFixed(2) + " purely for protected-group membership."
+        : " With L = " + L.toFixed(1) + ", the rule demands outputs change more slowly than inputs do.";
+      var crossing = (biasApplied && L > 1) ? (BIAS_C / (L - 1)) : null;
+      indivVerdict.textContent = "\u2717 Individual fairness violated: gap " + gap.toFixed(2) +
+        " > L\u00b7d = " + bound.toFixed(2) + "." + why +
+        (crossing !== null && crossing <= 1
+          ? " Slide d past " + crossing.toFixed(2) + " and it would fall back inside tolerance."
+          : "");
     }
   }
   indivDist.addEventListener("input", updateIndiv);
+  indivL.addEventListener("input", updateIndiv);
   indivProtected.addEventListener("change", updateIndiv);
   indivBiased.addEventListener("change", updateIndiv);
   updateIndiv();
@@ -717,7 +814,8 @@
   // ======================================================
   var cmpAdjust = document.getElementById("cmp-adjust"), cmpAdjustVal = document.getElementById("cmp-adjust-val");
   var cmpGapEl = document.getElementById("cmp-gap"), cmpTwinAEl = document.getElementById("cmp-twin-a"),
-      cmpTwinBEl = document.getElementById("cmp-twin-b"), cmpVerdict = document.getElementById("cmp-verdict");
+      cmpTwinBEl = document.getElementById("cmp-twin-b"), cmpVerdict = document.getElementById("cmp-verdict"),
+      cmpThrAEl = document.getElementById("cmp-thr-a"), cmpThrBEl = document.getElementById("cmp-thr-b");
 
   var compareChart = new Chart(document.getElementById("compare-chart").getContext("2d"), {
     type: "bar",
@@ -763,6 +861,8 @@
     compareChart.data.datasets[0].data = [ra, rb];
     compareChart.update();
     cmpGapEl.textContent = pct(gap);
+    cmpThrAEl.textContent = tA.toFixed(2);
+    cmpThrBEl.textContent = tB.toFixed(2);
 
     // Twin applicants: identical score CMP_TWIN_SCORE, one in each group.
     var twinAaccepted = CMP_TWIN_SCORE >= tA;
@@ -770,12 +870,23 @@
     cmpTwinAEl.textContent = twinAaccepted ? "Accepted" : "Rejected";
     cmpTwinBEl.textContent = twinBaccepted ? "Accepted" : "Rejected";
 
+    var thresholdsNote = "Thresholds now " + tA.toFixed(2) + " (A) vs " + tB.toFixed(2) +
+      " (B); group gap " + pct(gap) + ".";
+
     if (twinAaccepted === twinBaccepted) {
-      cmpVerdict.className = "verdict pass";
-      cmpVerdict.textContent = "\u2713 The two equal-score twins (both 0.55) get the SAME decision \u2014 individual fairness holds. Group gap: " + pct(gap) + ".";
+      if (Math.abs(tA - tB) < 0.005) {
+        cmpVerdict.className = "verdict pass";
+        cmpVerdict.textContent = "\u2713 One group-blind threshold for everyone. " + thresholdsNote +
+          " Equal-score twins get the same decision, but the groups are far apart.";
+      } else {
+        cmpVerdict.className = "verdict pass";
+        cmpVerdict.textContent = "\u2713 Still consistent for the twins. " + thresholdsNote +
+          " The gap is shrinking, and the twins have not been split \u2014 yet.";
+      }
     } else {
       cmpVerdict.className = "verdict fail";
-      cmpVerdict.textContent = "\u2717 Same score (0.55), DIFFERENT decision \u2014 individual fairness is violated to shrink the group gap (now " + pct(gap) + ").";
+      cmpVerdict.textContent = "\u2717 Same score (0.55), DIFFERENT decision: twin A rejected, twin B accepted. " +
+        thresholdsNote + " Individual fairness was sacrificed to close the group gap.";
     }
   }
   cmpAdjust.addEventListener("input", updateCompare);
