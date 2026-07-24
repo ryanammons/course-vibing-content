@@ -1562,5 +1562,51 @@ drawCostCurve();
 drawNeuronAll();
 train();
 </script>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * iframe auto-resize (child side).
+ * Broadcasts this document's height to the parent window so an embedding
+ * Canvas page can size its <iframe> to fit (no inner scrollbar). Sends both
+ * a generic message type and the legacy one, so it works with either version
+ * of canvas_iframe_resizer_parent.js. If no listener is installed, this is a
+ * harmless no-op and the iframe keeps its fixed fallback height.
+ *
+ * Height changes a lot here because switching tabs swaps panels in and out,
+ * so we re-post on clicks, inputs, resizes, and via ResizeObserver.
+ * ------------------------------------------------------------------ */
+(function () {
+  "use strict";
+  var TYPES = ["itd140-lesson:height", "itd140-fairness:height"];
+  var lastSent = 0;
+  function currentHeight() {
+    return Math.max(
+      document.body ? document.body.scrollHeight : 0,
+      document.body ? document.body.offsetHeight : 0,
+      document.documentElement ? document.documentElement.scrollHeight : 0,
+      document.documentElement ? document.documentElement.offsetHeight : 0
+    );
+  }
+  function postHeight() {
+    if (window.parent === window) { return; } // not embedded
+    var h = currentHeight() + 24;             // small buffer
+    if (Math.abs(h - lastSent) < 2) { return; }
+    lastSent = h;
+    TYPES.forEach(function (t) {
+      try { window.parent.postMessage({ type: t, height: h }, "*"); } catch (e) {}
+    });
+  }
+  window.addEventListener("load", postHeight);
+  window.addEventListener("resize", postHeight);
+  document.addEventListener("click", function () { setTimeout(postHeight, 80); });
+  document.addEventListener("input", function () { setTimeout(postHeight, 80); });
+  document.addEventListener("change", function () { setTimeout(postHeight, 80); });
+  if (window.ResizeObserver) {
+    try { new ResizeObserver(postHeight).observe(document.documentElement); } catch (e) {}
+  }
+  var ticks = 0, iv = setInterval(function () { postHeight(); if (++ticks > 12) { clearInterval(iv); } }, 300);
+})();
+</script>
+
 </body>
 </html>
